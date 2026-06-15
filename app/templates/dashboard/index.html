@@ -4,7 +4,7 @@
 
 {% block content %}
 <div class="page-header">
-    <h1>Servizi in scadenza</h1>
+    <h1>Scadenze del mese</h1>
     <a class="btn btn-secondary" href="/riepilogo?mese={{ nav.chiave }}">Riepilogo da fatturare →</a>
 </div>
 
@@ -28,31 +28,36 @@
         </tr>
     </thead>
     <tbody>
-        {% for s, cls in righe %}
+        {% for riga, cls in righe %}
+        {% set s = riga.servizio %}
+        {% set occ = riga.occorrenza %}
         <tr class="{{ cls }}">
             <td>{{ s.cliente.nome }}</td>
             <td>{{ s.descrizione }}</td>
             <td class="col-data">
-                {{ s.data_scadenza.strftime('%d/%m/%Y') }}
-                {% if cls == 'row-scaduta' %}
-                <span class="badge badge-off">Scaduto</span>
+                {{ occ.data_occorrenza.strftime('%d/%m/%Y') }}
+                {% if cls == 'row-passata' %}
+                <span class="badge badge-off">Passata</span>
                 {% elif cls == 'row-in-scadenza' %}
                 <span class="badge badge-warn">In scadenza</span>
                 {% endif %}
+                {% if occ.da_override %}
+                <span class="badge badge-tipo" title="Importo/quantità personalizzati per questa occorrenza">Override</span>
+                {% endif %}
             </td>
-            <td class="col-num">{{ s.quantita }}</td>
-            <td class="col-num">{{ "%.2f"|format(s.importo) }} {{ s.valuta }}</td>
-            <td class="col-num"><strong>{{ "%.2f"|format(s.totale) }} {{ s.valuta }}</strong></td>
+            <td class="col-num">{{ occ.quantita }}</td>
+            <td class="col-num">{{ "%.2f"|format(occ.importo) }} {{ s.valuta }}</td>
+            <td class="col-num"><strong>{{ "%.2f"|format(occ.totale) }} {{ s.valuta }}</strong></td>
             <td><span class="badge badge-stato-{{ s.stato.value }}">{{ s.stato.value }}</span></td>
         </tr>
         {% endfor %}
     </tbody>
 </table>
 <p class="table-legend">
-    <span class="legend-dot legend-scaduta"></span> Scaduto &nbsp;
+    <span class="legend-dot legend-passata"></span> Passata &nbsp;
     <span class="legend-dot legend-in-scadenza"></span> In scadenza entro il preavviso
 </p>
 {% else %}
-<p class="muted">Nessun servizio in scadenza in {{ nav.etichetta }}.</p>
+<p class="muted">Nessuna scadenza in {{ nav.etichetta }}.</p>
 {% endif %}
 {% endblock %}

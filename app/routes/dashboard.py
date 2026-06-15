@@ -1,13 +1,13 @@
 """
 Dashboard and billing-summary routes.
 
-- ``GET /``                  services expiring in the selected month
+- ``GET /``                  occurrences falling in the selected month
 - ``GET /riepilogo``         billing summary for the month (active services only)
 - ``GET /riepilogo/export``  CSV export of the same summary
 
 The month is chosen via the ``?mese=YYYY-MM`` query string and defaults to the
-current month. See ``app/services/periodi.py`` and ``app/services/riepilogo.py``.
-All routes require an authenticated user.
+current month. Occurrences come from ``app/services/riepilogo.py``, which builds
+on the occurrence engine. All routes require an authenticated user.
 """
 from __future__ import annotations
 
@@ -24,7 +24,7 @@ from app.database import get_db
 from app.dependencies import require_login
 from app.models.utente import Utente
 from app.services import periodi, riepilogo
-from app.services.scadenze import classe_scadenza
+from app.services.scadenze import classe_occorrenza
 from app.templating import templates
 
 router = APIRouter()
@@ -56,9 +56,12 @@ def dashboard(
     user: Utente = Depends(require_login),
 ):
     primo = periodi.parse_mese(mese)
-    servizi = riepilogo.servizi_del_mese(db, primo)
     oggi = date.today()
-    righe = [(s, classe_scadenza(s, oggi)) for s in servizi]
+    righe = [
+        (riga, classe_occorrenza(riga.occorrenza.data_occorrenza,
+                                 riga.servizio.preavviso_giorni, oggi))
+        for riga in riepilogo.occorrenze_del_mese(db, primo)
+    ]
     return templates.TemplateResponse(
         request,
         "dashboard/index.html",
@@ -74,8 +77,8 @@ def riepilogo_mese(
     user: Utente = Depends(require_login),
 ):
     primo = periodi.parse_mese(mese)
-    servizi = riepilogo.servizi_del_mese(db, primo, solo_attivi=True)
-    gruppi = riepilogo.raggruppa_per_cliente(servizi)
+    righe = riepilogo.occorrenze_del_mese(db, primo, solo_attivi=True)
+    gruppi = riepilogo.raggruppa_per_cliente(righe)
     totale = riepilogo.totale_complessivo(gruppi)
     return templates.TemplateResponse(
         request,
@@ -91,7 +94,7 @@ def riepilogo_export(
     user: Utente = Depends(require_login),
 ):
     primo = periodi.parse_mese(mese)
-    servizi = riepilogo.servizi_del_mese(db, primo, solo_attivi=True)
+    righe = riepilogo.occorrenze_del_mese(db, primo, solo_attivi=True)
 
     buffer = io.StringIO()
     # Semicolon delimiter: Italian Excel uses ';' as the list separator, so
@@ -101,15 +104,17 @@ def riepilogo_export(
         "Cliente", "Descrizione", "Tipo", "Scadenza", "Quantità",
         "Importo unitario", "Totale", "Referente", "Stato",
     ])
-    for s in servizi:
+    for riga in righe:
+        s = riga.servizio
+        occ = riga.occorrenza
         writer.writerow([
             s.cliente.nome,
             s.descrizione,
             s.tipo.value,
-            s.data_scadenza.strftime("%d/%m/%Y"),
-            s.quantita,
-            _decimale_it(s.importo),
-            _decimale_it(s.totale),
+            occ.data_occorrenza.strftime("%d/%m/%Y"),
+            occ.quantita,
+            _decimale_it(occ.importo),
+            _decimale_it(occ.totale),
             s.referente or "",
             s.stato.value,
         ])

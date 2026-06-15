@@ -32,15 +32,20 @@
             </tr>
         </thead>
         <tbody>
-            {% for s in g.servizi %}
+            {% for riga in g.righe %}
+            {% set s = riga.servizio %}
+            {% set occ = riga.occorrenza %}
             <tr>
-                <td>{{ s.descrizione }}</td>
+                <td>
+                    {{ s.descrizione }}
+                    {% if occ.da_override %}<span class="badge badge-tipo" title="Importo/quantità personalizzati per questa occorrenza">override</span>{% endif %}
+                </td>
                 <td><span class="badge badge-tipo">{{ s.tipo.value }}</span></td>
-                <td class="col-data">{{ s.data_scadenza.strftime('%d/%m/%Y') }}</td>
+                <td class="col-data">{{ occ.data_occorrenza.strftime('%d/%m/%Y') }}</td>
                 <td>{% if s.referente %}{{ s.referente }}{% else %}<span class="muted">—</span>{% endif %}</td>
-                <td class="col-num">{{ s.quantita }}</td>
-                <td class="col-num">{{ "%.2f"|format(s.importo) }} {{ s.valuta }}</td>
-                <td class="col-num">{{ "%.2f"|format(s.totale) }} {{ s.valuta }}</td>
+                <td class="col-num">{{ occ.quantita }}</td>
+                <td class="col-num">{{ "%.2f"|format(occ.importo) }} {{ s.valuta }}</td>
+                <td class="col-num">{{ "%.2f"|format(occ.totale) }} {{ s.valuta }}</td>
             </tr>
             {% endfor %}
         </tbody>

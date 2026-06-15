@@ -1,12 +1,16 @@
 """
 CRUD routes for services (servizi).
 
+A service is a recurring contract: it is valid from data_inizio to data_fine and
+billed every cadenza_mesi months. The actual billable dates ("occorrenze") are
+computed elsewhere (app/services/occorrenze.py); these routes only manage the
+contract record.
+
 All routes require an authenticated user (require_login).
 Delete uses HTMX hx-delete; all other writes use standard HTML form POST.
 """
 from datetime import date
 from decimal import Decimal, InvalidOperation
-from typing import Optional
 
 from fastapi import APIRouter, Depends, Form, Request
 from fastapi.exceptions import HTTPException
@@ -17,10 +21,10 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.dependencies import require_login
 from app.models.cliente import Cliente
-from app.models.enums import Ricorrenza, StatoServizio, TipoServizio
+from app.models.enums import StatoServizio, TipoServizio
 from app.models.servizio import Servizio
 from app.models.utente import Utente
-from app.services.scadenze import classe_scadenza
+from app.services.periodi import etichetta_cadenza
 from app.templating import templates
 
 router = APIRouter(prefix="/servizi")
@@ -46,7 +50,6 @@ def _form_choices(db: Session) -> dict:
     return {
         "clienti_attivi": _clienti_attivi(db),
         "tipi_servizio": list(TipoServizio),
-        "ricorrenze": list(Ricorrenza),
         "stati": list(StatoServizio),
     }
 
@@ -56,14 +59,14 @@ def _valori_da_servizio(s: Servizio) -> dict:
         "cliente_id": str(s.cliente_id),
         "descrizione": s.descrizione,
         "tipo": s.tipo.value,
-        "data_scadenza": s.data_scadenza.isoformat(),
+        "data_inizio": s.data_inizio.isoformat(),
+        "data_fine": s.data_fine.isoformat(),
+        "cadenza_mesi": str(s.cadenza_mesi),
         "importo": str(s.importo),
         "quantita": str(s.quantita),
         "valuta": s.valuta,
-        "ricorrenza": s.ricorrenza.value,
         "preavviso_giorni": str(s.preavviso_giorni),
         "stato": s.stato.value,
-        "rinnovo_automatico": s.rinnovo_automatico,  # bool: True/False
         "referente": s.referente or "",
         "note": s.note or "",
     }
@@ -79,19 +82,20 @@ def _valida(
     cliente_id_raw: str,
     descrizione: str,
     tipo_raw: str,
-    data_scadenza_raw: str,
+    data_inizio_raw: str,
+    data_fine_raw: str,
+    cadenza_mesi_raw: str,
     importo_raw: str,
     quantita_raw: str,
     valuta: str,
-    ricorrenza_raw: str,
     preavviso_giorni_raw: str,
     stato_raw: str,
     db: Session,
 ) -> tuple[list[str], dict]:
     """
     Validate form fields. Returns (errori, parsed_values).
-    parsed_values contains typed objects only for fields that passed validation,
-    None for those that failed. errori is empty when all fields are valid.
+    parsed_values contains typed objects only for fields that passed validation.
+    errori is empty when all fields are valid.
     """
     errori: list[str] = []
     parsed: dict = {}
@@ -122,11 +126,31 @@ def _valida(
     except ValueError:
         errori.append("Seleziona un tipo valido.")
 
-    # data_scadenza
+    # data_inizio / data_fine
+    data_inizio = data_fine = None
     try:
-        parsed["data_scadenza"] = date.fromisoformat(data_scadenza_raw)
+        data_inizio = date.fromisoformat(data_inizio_raw)
+        parsed["data_inizio"] = data_inizio
     except (ValueError, TypeError):
-        errori.append("Inserisci una data di scadenza valida.")
+        errori.append("Inserisci una data di inizio valida.")
+    try:
+        data_fine = date.fromisoformat(data_fine_raw)
+        parsed["data_fine"] = data_fine
+    except (ValueError, TypeError):
+        errori.append("Inserisci una data di fine valida.")
+    # Cross-field check: the contract cannot end before it starts.
+    if data_inizio is not None and data_fine is not None and data_fine < data_inizio:
+        errori.append("La data di fine non può essere precedente alla data di inizio.")
+
+    # cadenza_mesi
+    try:
+        cadenza = int(cadenza_mesi_raw)
+        if cadenza < 1:
+            errori.append("La cadenza deve essere di almeno 1 mese.")
+        else:
+            parsed["cadenza_mesi"] = cadenza
+    except (ValueError, TypeError):
+        errori.append("Cadenza non valida: inserisci un numero intero di mesi (es. 12).")
 
     # importo
     try:
@@ -154,12 +178,6 @@ def _valida(
         errori.append("La valuta è obbligatoria.")
     else:
         parsed["valuta"] = v
-
-    # ricorrenza
-    try:
-        parsed["ricorrenza"] = Ricorrenza(ricorrenza_raw)
-    except ValueError:
-        errori.append("Seleziona una ricorrenza valida.")
 
     # preavviso_giorni
     try:
@@ -190,11 +208,11 @@ def lista_servizi(
     db: Session = Depends(get_db),
     user: Utente = Depends(require_login),
 ):
-    servizi = db.scalars(select(Servizio).order_by(Servizio.data_scadenza)).all()
-    oggi = date.today()
-    righe = [(s, classe_scadenza(s, oggi)) for s in servizi]
+    servizi = db.scalars(select(Servizio).order_by(Servizio.data_inizio)).all()
+    # Each row carries a human-readable cadence label (mensile/trimestrale/...).
+    righe = [(s, etichetta_cadenza(s.cadenza_mesi)) for s in servizi]
     return templates.TemplateResponse(
-        request, "servizi/lista.html", {"user": user, "righe": righe, "oggi": oggi}
+        request, "servizi/lista.html", {"user": user, "righe": righe}
     )
 
 
@@ -215,14 +233,14 @@ def nuovo_form(
                 "cliente_id": "",
                 "descrizione": "",
                 "tipo": TipoServizio.abbonamento.value,
-                "data_scadenza": "",
+                "data_inizio": "",
+                "data_fine": "",
+                "cadenza_mesi": "12",
                 "importo": "",
                 "quantita": "1",
                 "valuta": "EUR",
-                "ricorrenza": Ricorrenza.annuale.value,
                 "preavviso_giorni": "30",
                 "stato": StatoServizio.attivo.value,
-                "rinnovo_automatico": False,
                 "referente": "",
                 "note": "",
             },
@@ -238,32 +256,31 @@ def crea_servizio(
     cliente_id: str = Form(""),
     descrizione: str = Form(""),
     tipo: str = Form(""),
-    data_scadenza: str = Form(""),
+    data_inizio: str = Form(""),
+    data_fine: str = Form(""),
+    cadenza_mesi: str = Form(""),
     importo: str = Form(""),
     quantita: str = Form("1"),
     valuta: str = Form("EUR"),
-    ricorrenza: str = Form(""),
     preavviso_giorni: str = Form("30"),
     stato: str = Form(""),
-    rinnovo_automatico: Optional[str] = Form(None),  # checkbox: present="on", absent=None
     referente: str = Form(""),
     note: str = Form(""),
     db: Session = Depends(get_db),
     user: Utente = Depends(require_login),
 ):
-    is_rinnovo = rinnovo_automatico is not None
     valori = _valori_da_form(
         cliente_id=cliente_id, descrizione=descrizione, tipo=tipo,
-        data_scadenza=data_scadenza, importo=importo, quantita=quantita,
-        valuta=valuta, ricorrenza=ricorrenza, preavviso_giorni=preavviso_giorni,
-        stato=stato, referente=referente, note=note,
+        data_inizio=data_inizio, data_fine=data_fine, cadenza_mesi=cadenza_mesi,
+        importo=importo, quantita=quantita, valuta=valuta,
+        preavviso_giorni=preavviso_giorni, stato=stato,
+        referente=referente, note=note,
     )
-    valori["rinnovo_automatico"] = is_rinnovo
     errori, parsed = _valida(
         cliente_id_raw=cliente_id, descrizione=descrizione, tipo_raw=tipo,
-        data_scadenza_raw=data_scadenza, importo_raw=importo, quantita_raw=quantita,
-        valuta=valuta, ricorrenza_raw=ricorrenza, preavviso_giorni_raw=preavviso_giorni,
-        stato_raw=stato, db=db,
+        data_inizio_raw=data_inizio, data_fine_raw=data_fine, cadenza_mesi_raw=cadenza_mesi,
+        importo_raw=importo, quantita_raw=quantita, valuta=valuta,
+        preavviso_giorni_raw=preavviso_giorni, stato_raw=stato, db=db,
     )
     if errori:
         return templates.TemplateResponse(
@@ -273,7 +290,6 @@ def crea_servizio(
             status_code=422,
         )
     db.add(Servizio(
-        rinnovo_automatico=is_rinnovo,
         referente=referente.strip() or None,
         note=note.strip() or None,
         **parsed,
@@ -317,33 +333,32 @@ def aggiorna_servizio(
     cliente_id: str = Form(""),
     descrizione: str = Form(""),
     tipo: str = Form(""),
-    data_scadenza: str = Form(""),
+    data_inizio: str = Form(""),
+    data_fine: str = Form(""),
+    cadenza_mesi: str = Form(""),
     importo: str = Form(""),
     quantita: str = Form("1"),
     valuta: str = Form("EUR"),
-    ricorrenza: str = Form(""),
     preavviso_giorni: str = Form("30"),
     stato: str = Form(""),
-    rinnovo_automatico: Optional[str] = Form(None),
     referente: str = Form(""),
     note: str = Form(""),
     db: Session = Depends(get_db),
     user: Utente = Depends(require_login),
 ):
     s = _get_or_404(db, servizio_id)
-    is_rinnovo = rinnovo_automatico is not None
     valori = _valori_da_form(
         cliente_id=cliente_id, descrizione=descrizione, tipo=tipo,
-        data_scadenza=data_scadenza, importo=importo, quantita=quantita,
-        valuta=valuta, ricorrenza=ricorrenza, preavviso_giorni=preavviso_giorni,
-        stato=stato, referente=referente, note=note,
+        data_inizio=data_inizio, data_fine=data_fine, cadenza_mesi=cadenza_mesi,
+        importo=importo, quantita=quantita, valuta=valuta,
+        preavviso_giorni=preavviso_giorni, stato=stato,
+        referente=referente, note=note,
     )
-    valori["rinnovo_automatico"] = is_rinnovo
     errori, parsed = _valida(
         cliente_id_raw=cliente_id, descrizione=descrizione, tipo_raw=tipo,
-        data_scadenza_raw=data_scadenza, importo_raw=importo, quantita_raw=quantita,
-        valuta=valuta, ricorrenza_raw=ricorrenza, preavviso_giorni_raw=preavviso_giorni,
-        stato_raw=stato, db=db,
+        data_inizio_raw=data_inizio, data_fine_raw=data_fine, cadenza_mesi_raw=cadenza_mesi,
+        importo_raw=importo, quantita_raw=quantita, valuta=valuta,
+        preavviso_giorni_raw=preavviso_giorni, stato_raw=stato, db=db,
     )
     if errori:
         choices = _form_choices(db)
@@ -358,7 +373,6 @@ def aggiorna_servizio(
         )
     for field, value in parsed.items():
         setattr(s, field, value)
-    s.rinnovo_automatico = is_rinnovo
     s.referente = referente.strip() or None
     s.note = note.strip() or None
     db.commit()

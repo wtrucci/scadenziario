@@ -7,7 +7,7 @@ set to the first day of that month.
 """
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, timedelta
 
 # Italian month names, indexed 1..12 (index 0 is unused).
 MESI_IT = [
@@ -50,6 +50,24 @@ def mese_precedente(primo: date) -> date:
     if primo.month == 1:
         return date(primo.year - 1, 12, 1)
     return date(primo.year, primo.month - 1, 1)
+
+
+def ultimo_giorno_mese(primo: date) -> date:
+    """Last day of the month starting at ``primo`` (inclusive).
+
+    Used to build the closed interval ``[primo, ultimo_giorno_mese(primo)]`` that
+    the occurrence engine expects for a single month.
+    """
+    return mese_successivo(primo) - timedelta(days=1)
+
+
+def etichetta_cadenza(mesi: int) -> str:
+    """Human-readable billing cadence, e.g. 1 -> 'mensile', 3 -> 'trimestrale'.
+
+    Falls back to 'ogni N mesi' for uncommon values.
+    """
+    comuni = {1: "mensile", 3: "trimestrale", 6: "semestrale", 12: "annuale"}
+    return comuni.get(mesi, f"ogni {mesi} mesi")
 
 
 def chiave_mese(primo: date) -> str:

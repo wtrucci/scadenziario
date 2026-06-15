@@ -240,6 +240,9 @@ tr.row-scaduta { background: #fef2f2 !important; }
 tr.row-scaduta:hover { background: #fee2e2 !important; }
 tr.row-in-scadenza { background: #fffbeb !important; }
 tr.row-in-scadenza:hover { background: #fef3c7 !important; }
+/* Past occurrences: shown but visually de-emphasised. */
+tr.row-passata { background: #f9fafb !important; color: var(--muted); }
+tr.row-passata:hover { background: #f3f4f6 !important; }
 
 /* ------------------------------------------------------------------ Badges */
 
@@ -259,6 +262,7 @@ tr.row-in-scadenza:hover { background: #fef3c7 !important; }
 .legend-dot { display: inline-block; width: 10px; height: 10px; border-radius: 2px; }
 .legend-scaduta    { background: #fecaca; }
 .legend-in-scadenza { background: #fde68a; }
+.legend-passata    { background: #e5e7eb; }
 
 /* Numeric columns (qty, price, total) — right-aligned */
 .col-num { text-align: right; white-space: nowrap; }

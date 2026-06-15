@@ -1,10 +1,11 @@
 """
-Tests for the dashboard / billing-summary logic and routes.
+Tests for the dashboard / billing-summary logic and routes, now based on the
+occurrence engine.
 
-Covers the three things that carry real business risk:
-- month filtering (the half-open date range, including its boundaries),
+Covers the things that carry real business risk:
+- selecting the occurrences that fall in a month (including the boundaries),
 - the "active services only" filter used by the billing summary,
-- grouping by customer and the subtotal / grand-total sums.
+- grouping by customer and the subtotal / grand-total sums (override-aware).
 
 Run with:  python -m unittest discover -s tests
 Uses an isolated in-memory SQLite database; the real DB is never touched.
@@ -25,7 +26,8 @@ from sqlalchemy.pool import StaticPool
 import app.models  # noqa: F401  (registers all tables on Base.metadata)
 from app.database import Base
 from app.models.cliente import Cliente
-from app.models.enums import Ricorrenza, StatoServizio, TipoServizio
+from app.models.enums import StatoServizio, TipoServizio
+from app.models.override_importo import OverrideImporto
 from app.models.servizio import Servizio
 from app.services import periodi, riepilogo
 
@@ -43,24 +45,31 @@ def _make_engine():
 
 
 def _add_servizio(
-    db, cliente, descrizione, scadenza, importo, *,
-    quantita=1, stato=StatoServizio.attivo, referente=None,
+    db, cliente, descrizione, data_inizio, importo, *,
+    data_fine=None, cadenza_mesi=1, quantita=1,
+    stato=StatoServizio.attivo, referente=None,
 ):
+    """Add a service. By default it is a single payment (data_fine == data_inizio)
+    so each test controls exactly which occurrences exist."""
     s = Servizio(
         cliente=cliente,
         descrizione=descrizione,
         tipo=TipoServizio.abbonamento,
-        data_scadenza=scadenza,
+        data_inizio=data_inizio,
+        data_fine=data_fine or data_inizio,
+        cadenza_mesi=cadenza_mesi,
         importo=Decimal(importo),
         quantita=quantita,
         valuta="EUR",
-        ricorrenza=Ricorrenza.annuale,
         preavviso_giorni=30,
         stato=stato,
         referente=referente,
     )
     db.add(s)
     return s
+
+
+DICEMBRE = date(2026, 12, 1)
 
 
 class TestLogicaRiepilogo(unittest.TestCase):
@@ -78,21 +87,33 @@ class TestLogicaRiepilogo(unittest.TestCase):
         self.db.close()
         self.engine.dispose()
 
-    def test_filtro_mese_e_confini(self):
-        """Only services expiring within the month are returned; the last day of
-        the month is included and the first day of the next month is excluded."""
-        _add_servizio(self.db, self.acme, "Dentro inizio", date(2026, 12, 1), "10")
-        _add_servizio(self.db, self.acme, "Dentro fine", date(2026, 12, 31), "10")
+    def test_occorrenze_del_mese_e_confini(self):
+        """Only occurrences within the month are returned; the first and last day
+        of the month are included, neighbouring months are excluded."""
+        _add_servizio(self.db, self.acme, "Primo giorno", date(2026, 12, 1), "10")
+        _add_servizio(self.db, self.acme, "Ultimo giorno", date(2026, 12, 31), "10")
         _add_servizio(self.db, self.acme, "Mese prima", date(2026, 11, 30), "10")
         _add_servizio(self.db, self.acme, "Mese dopo", date(2027, 1, 1), "10")
         self.db.flush()
 
-        servizi = riepilogo.servizi_del_mese(self.db, date(2026, 12, 1))
-        descrizioni = {s.descrizione for s in servizi}
-        self.assertEqual(descrizioni, {"Dentro inizio", "Dentro fine"})
+        righe = riepilogo.occorrenze_del_mese(self.db, DICEMBRE)
+        date_occ = {r.occorrenza.data_occorrenza for r in righe}
+        self.assertEqual(date_occ, {date(2026, 12, 1), date(2026, 12, 31)})
+
+    def test_occorrenza_mensile_compare_ogni_mese(self):
+        """A monthly contract spanning several months yields one occurrence in
+        the selected month (proving occurrences are computed, not one-shot)."""
+        _add_servizio(self.db, self.acme, "Mensile", date(2026, 1, 10), "10",
+                      data_fine=date(2027, 1, 10), cadenza_mesi=1)
+        self.db.flush()
+
+        righe = riepilogo.occorrenze_del_mese(self.db, DICEMBRE)
+        self.assertEqual(
+            [r.occorrenza.data_occorrenza for r in righe], [date(2026, 12, 10)]
+        )
 
     def test_solo_attivi(self):
-        """The billing summary must exclude disdetti and rinnovati."""
+        """The billing summary must exclude every state except 'attivo'."""
         _add_servizio(self.db, self.acme, "Attivo", date(2026, 12, 10), "10",
                       stato=StatoServizio.attivo)
         _add_servizio(self.db, self.acme, "Disdetto", date(2026, 12, 11), "10",
@@ -103,15 +124,14 @@ class TestLogicaRiepilogo(unittest.TestCase):
                       stato=StatoServizio.scaduto)
         self.db.flush()
 
-        tutti = riepilogo.servizi_del_mese(self.db, date(2026, 12, 1))
+        tutti = riepilogo.occorrenze_del_mese(self.db, DICEMBRE)
         self.assertEqual(len(tutti), 4)
 
-        attivi = riepilogo.servizi_del_mese(self.db, date(2026, 12, 1), solo_attivi=True)
-        self.assertEqual([s.descrizione for s in attivi], ["Attivo"])
+        attivi = riepilogo.occorrenze_del_mese(self.db, DICEMBRE, solo_attivi=True)
+        self.assertEqual([r.servizio.descrizione for r in attivi], ["Attivo"])
 
     def test_raggruppamento_e_somme(self):
-        """Grouping by customer, per-line totals (qty x unit price), per-customer
-        subtotals and the grand total."""
+        """Grouping by customer, per-occurrence totals, subtotals, grand total."""
         # Acme: 2 x 10.00 = 20.00 ; 1 x 5.50 = 5.50  -> subtotal 25.50
         _add_servizio(self.db, self.acme, "Licenze", date(2026, 12, 5), "10.00", quantita=2)
         _add_servizio(self.db, self.acme, "Dominio", date(2026, 12, 6), "5.50", quantita=1)
@@ -119,21 +139,38 @@ class TestLogicaRiepilogo(unittest.TestCase):
         _add_servizio(self.db, self.beta, "Hosting", date(2026, 12, 7), "100.00", quantita=3)
         self.db.flush()
 
-        servizi = riepilogo.servizi_del_mese(self.db, date(2026, 12, 1), solo_attivi=True)
-        gruppi = riepilogo.raggruppa_per_cliente(servizi)
+        righe = riepilogo.occorrenze_del_mese(self.db, DICEMBRE, solo_attivi=True)
+        gruppi = riepilogo.raggruppa_per_cliente(righe)
 
-        # Sorted by customer name: Acme before Beta.
         self.assertEqual([g.cliente.nome for g in gruppi], ["Acme", "Beta"])
-        self.assertEqual(len(gruppi[0].servizi), 2)
+        self.assertEqual(len(gruppi[0].righe), 2)
         self.assertEqual(gruppi[0].subtotale, Decimal("25.50"))
         self.assertEqual(gruppi[1].subtotale, Decimal("300.00"))
-
         self.assertEqual(riepilogo.totale_complessivo(gruppi), Decimal("325.50"))
 
-    def test_totale_mese_vuoto(self):
-        """No services -> empty groups and a zero grand total."""
+    def test_somme_rispettano_override(self):
+        """An override on a December occurrence must change that occurrence's
+        amount in the subtotal (and be flagged)."""
+        s = _add_servizio(self.db, self.acme, "Antivirus", date(2026, 12, 10), "10.00",
+                          quantita=1)
+        s.override_importi.append(
+            OverrideImporto(data_occorrenza=date(2026, 12, 10),
+                            importo=Decimal("99.00"), quantita=5)
+        )
+        self.db.flush()
+
+        righe = riepilogo.occorrenze_del_mese(self.db, DICEMBRE, solo_attivi=True)
+        self.assertEqual(len(righe), 1)
+        self.assertTrue(righe[0].occorrenza.da_override)
+        self.assertEqual(righe[0].occorrenza.totale, Decimal("495.00"))
+
+        gruppi = riepilogo.raggruppa_per_cliente(righe)
+        self.assertEqual(riepilogo.totale_complessivo(gruppi), Decimal("495.00"))
+
+    def test_mese_vuoto(self):
+        """No occurrences -> empty groups and a zero grand total."""
         gruppi = riepilogo.raggruppa_per_cliente(
-            riepilogo.servizi_del_mese(self.db, date(2026, 12, 1), solo_attivi=True)
+            riepilogo.occorrenze_del_mese(self.db, DICEMBRE, solo_attivi=True)
         )
         self.assertEqual(gruppi, [])
         self.assertEqual(riepilogo.totale_complessivo(gruppi), Decimal("0"))
@@ -153,6 +190,18 @@ class TestPeriodi(unittest.TestCase):
     def test_mese_successivo_e_precedente_cambio_anno(self):
         self.assertEqual(periodi.mese_successivo(date(2026, 12, 1)), date(2027, 1, 1))
         self.assertEqual(periodi.mese_precedente(date(2026, 1, 1)), date(2025, 12, 1))
+
+    def test_ultimo_giorno_mese(self):
+        self.assertEqual(periodi.ultimo_giorno_mese(date(2026, 12, 1)), date(2026, 12, 31))
+        self.assertEqual(periodi.ultimo_giorno_mese(date(2024, 2, 1)), date(2024, 2, 29))  # leap
+        self.assertEqual(periodi.ultimo_giorno_mese(date(2025, 2, 1)), date(2025, 2, 28))
+
+    def test_etichetta_cadenza(self):
+        self.assertEqual(periodi.etichetta_cadenza(1), "mensile")
+        self.assertEqual(periodi.etichetta_cadenza(3), "trimestrale")
+        self.assertEqual(periodi.etichetta_cadenza(6), "semestrale")
+        self.assertEqual(periodi.etichetta_cadenza(12), "annuale")
+        self.assertEqual(periodi.etichetta_cadenza(4), "ogni 4 mesi")
 
     def test_etichetta_e_chiave(self):
         self.assertEqual(periodi.etichetta_mese(date(2026, 12, 1)), "Dicembre 2026")
@@ -204,7 +253,7 @@ class TestRotte(unittest.TestCase):
         self.app.dependency_overrides.clear()
         self.engine.dispose()
 
-    def test_dashboard_mostra_mese_e_servizi(self):
+    def test_dashboard_mostra_mese_e_occorrenze(self):
         r = self.client.get("/?mese=2026-12")
         self.assertEqual(r.status_code, 200)
         self.assertIn("Dicembre 2026", r.text)

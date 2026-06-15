@@ -7,10 +7,23 @@ from sqlalchemy import Boolean, Date, DateTime, Enum, ForeignKey, Integer, Numer
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base, utcnow
-from app.models.enums import Ricorrenza, StatoServizio, TipoServizio
+from app.models.enums import StatoServizio, TipoServizio
 
 
 class Servizio(Base):
+    """
+    A recurring billable service (a contract).
+
+    A service is valid from ``data_inizio`` to ``data_fine`` (inclusive) and is
+    billed every ``cadenza_mesi`` months. The individual billable dates
+    ("occorrenze") are NOT stored: they are computed on the fly from
+    data_inizio + cadenza_mesi steps until data_fine. A single payment is
+    modelled as data_fine == data_inizio.
+
+    The per-occurrence total defaults to ``quantita * importo`` (see the
+    ``totale`` property), unless an OverrideImporto exists for that specific
+    occurrence date.
+    """
     __tablename__ = "servizi"
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -20,26 +33,26 @@ class Servizio(Base):
     tipo: Mapped[TipoServizio] = mapped_column(
         Enum(TipoServizio, native_enum=False, length=20)
     )
-    data_scadenza: Mapped[date] = mapped_column(Date)
 
-    # Unit price. Total = quantita * importo (see `totale` property below).
+    # Contract period: the service is valid from data_inizio to data_fine
+    # (inclusive). Each occurrence falls on the day-of-month of data_inizio.
+    data_inizio: Mapped[date] = mapped_column(Date)
+    data_fine: Mapped[date] = mapped_column(Date)
+
+    # Billing cadence in months (1 = monthly, 3 = quarterly, 6 = half-yearly,
+    # 12 = yearly, ...). Replaces the old `ricorrenza` enum; there is no longer
+    # a "one-off" recurrence (use data_fine == data_inizio for a single payment).
+    cadenza_mesi: Mapped[int] = mapped_column(Integer)
+
+    # Default unit price of each occurrence. Occurrence total = quantita * importo
+    # (see the `totale` property), unless overridden per date via OverrideImporto.
     importo: Mapped[Decimal] = mapped_column(Numeric(10, 2))
     quantita: Mapped[int] = mapped_column(Integer, default=1)
     valuta: Mapped[str] = mapped_column(String(3), default="EUR")
 
-    ricorrenza: Mapped[Ricorrenza] = mapped_column(
-        Enum(Ricorrenza, native_enum=False, length=20)
-    )
     preavviso_giorni: Mapped[int] = mapped_column(Integer, default=30)
     stato: Mapped[StatoServizio] = mapped_column(
         Enum(StatoServizio, native_enum=False, length=20), default=StatoServizio.attivo
-    )
-
-    # When True, the scheduler will advance data_scadenza by one recurrence period
-    # at expiry and write a RinnovoLog entry. server_default="0" ensures existing
-    # rows get False when this column is added via ALTER TABLE migration.
-    rinnovo_automatico: Mapped[bool] = mapped_column(
-        Boolean, default=False, server_default="0"
     )
 
     # Optional: the colleague/contact to invoice when different from the end customer.
@@ -57,15 +70,21 @@ class Servizio(Base):
     notifiche: Mapped[list[NotificaLog]] = relationship(
         back_populates="servizio", cascade="all, delete-orphan"
     )
-    # Renewal history. Deleted together with the service (billing context gone).
-    rinnovi: Mapped[list[RinnovoLog]] = relationship(
+    # Per-occurrence price overrides. Deleted together with the service.
+    override_importi: Mapped[list[OverrideImporto]] = relationship(
         back_populates="servizio", cascade="all, delete-orphan"
     )
 
     @property
     def totale(self) -> Decimal:
-        """Total price for this service line: unit price × quantity."""
+        """Default total for one occurrence: unit price × quantity.
+
+        This is the default used when no OverrideImporto applies to a given
+        occurrence date."""
         return self.importo * self.quantita
 
     def __repr__(self) -> str:
-        return f"<Servizio id={self.id} descrizione={self.descrizione!r} scadenza={self.data_scadenza}>"
+        return (
+            f"<Servizio id={self.id} descrizione={self.descrizione!r}"
+            f" {self.data_inizio}..{self.data_fine} ogni {self.cadenza_mesi}m>"
+        )

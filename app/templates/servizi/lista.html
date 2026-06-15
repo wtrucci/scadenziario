@@ -15,7 +15,9 @@
             <th>Cliente</th>
             <th>Descrizione</th>
             <th>Tipo</th>
-            <th>Scadenza</th>
+            <th>Periodo</th>
+            <th>Cadenza</th>
+            <th>Referente</th>
             <th class="col-num">Qtà</th>
             <th class="col-num">Importo unit.</th>
             <th class="col-num">Totale</th>
@@ -24,17 +26,11 @@
         </tr>
     </thead>
     <tbody>
-        {% for s, cls in righe %}
-        {% with %}
+        {% for s, cadenza in righe %}
         {% include "servizi/_riga.html" %}
-        {% endwith %}
         {% endfor %}
     </tbody>
 </table>
-<p class="table-legend">
-    <span class="legend-dot legend-scaduta"></span> Scaduto &nbsp;
-    <span class="legend-dot legend-in-scadenza"></span> In scadenza entro il preavviso
-</p>
 {% else %}
 <p class="muted">Nessun servizio presente. <a href="/servizi/nuovo">Crea il primo</a>.</p>
 {% endif %}

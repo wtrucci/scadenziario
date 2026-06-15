@@ -35,24 +35,14 @@
                value="{{ valori.descrizione }}" maxlength="300" required autofocus>
     </div>
 
-    {# --- Tipo / Ricorrenza / Stato (3 colonne) --- #}
-    <div class="field-row-3">
+    {# --- Tipo / Stato (2 colonne) --- #}
+    <div class="field-row-2">
         <div class="field">
             <label for="tipo">Tipo <span class="required">*</span></label>
             <select id="tipo" name="tipo" required>
                 {% for t in tipi_servizio %}
                 <option value="{{ t.value }}" {% if valori.tipo == t.value %}selected{% endif %}>
                     {{ t.value | capitalize }}
-                </option>
-                {% endfor %}
-            </select>
-        </div>
-        <div class="field">
-            <label for="ricorrenza">Ricorrenza <span class="required">*</span></label>
-            <select id="ricorrenza" name="ricorrenza" required>
-                {% for r in ricorrenze %}
-                <option value="{{ r.value }}" {% if valori.ricorrenza == r.value %}selected{% endif %}>
-                    {{ r.value.replace('_', ' ') | capitalize }}
                 </option>
                 {% endfor %}
             </select>
@@ -69,12 +59,28 @@
         </div>
     </div>
 
-    {# --- Scadenza / Preavviso --- #}
+    {# --- Periodo del contratto: inizio / fine --- #}
     <div class="field-row-2">
         <div class="field">
-            <label for="data_scadenza">Data scadenza <span class="required">*</span></label>
-            <input type="date" id="data_scadenza" name="data_scadenza"
-                   value="{{ valori.data_scadenza }}" required>
+            <label for="data_inizio">Data inizio <span class="required">*</span></label>
+            <input type="date" id="data_inizio" name="data_inizio"
+                   value="{{ valori.data_inizio }}" required>
+        </div>
+        <div class="field">
+            <label for="data_fine">Data fine <span class="required">*</span></label>
+            <input type="date" id="data_fine" name="data_fine"
+                   value="{{ valori.data_fine }}" required>
+            <small class="muted">Per un pagamento singolo, usa la stessa data di inizio.</small>
+        </div>
+    </div>
+
+    {# --- Cadenza / Preavviso --- #}
+    <div class="field-row-2">
+        <div class="field">
+            <label for="cadenza_mesi">Cadenza (mesi) <span class="required">*</span></label>
+            <input type="number" id="cadenza_mesi" name="cadenza_mesi"
+                   value="{{ valori.cadenza_mesi }}" min="1" step="1" required>
+            <small class="muted">1 = mensile · 3 = trimestrale · 6 = semestrale · 12 = annuale</small>
         </div>
         <div class="field">
             <label for="preavviso_giorni">Preavviso (giorni) <span class="required">*</span></label>
@@ -100,13 +106,6 @@
             <input type="text" id="valuta" name="valuta"
                    value="{{ valori.valuta }}" maxlength="3" style="width:6rem">
         </div>
-    </div>
-
-    {# --- Rinnovo automatico --- #}
-    <div class="field field-inline">
-        <input type="checkbox" id="rinnovo_automatico" name="rinnovo_automatico"
-               {% if valori.rinnovo_automatico %}checked{% endif %}>
-        <label for="rinnovo_automatico">Rinnovo automatico alla scadenza</label>
     </div>
 
     {# --- Referente / Note --- #}

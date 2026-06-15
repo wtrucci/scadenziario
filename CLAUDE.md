@@ -48,54 +48,78 @@ le scelte tecniche quando non sono banali.
 - Soglia di preavviso configurabile per servizio (giorni prima della scadenza).
 - Registrare ogni notifica inviata (log con esito) per evitare invii doppi.
 
-## Modello dati (iniziale)
+## Modello dati
+
+> NOTA STORICA: il modello del Servizio è stato rivisto. In origine un servizio
+> aveva una singola `data_scadenza` e una `ricorrenza` come etichetta. Ora un
+> servizio è un CONTRATTO con un periodo e una cadenza di fatturazione, che
+> genera più "occorrenze" fatturabili nel tempo. Vedi sotto.
 
 - **Cliente**: id, nome, note, attivo (bool).
 - **Servizio**: id, cliente_id (FK), descrizione, tipo
-  (licenza/contratto/abbonamento/altro), data_scadenza, importo (prezzo
-  unitario), quantita (default 1), valuta, ricorrenza
-  (annuale/mensile/una-tantum), preavviso_giorni, stato
+  (licenza/contratto/abbonamento/altro), data_inizio, data_fine,
+  cadenza_mesi (int), importo (prezzo unitario di default), quantita
+  (default 1), valuta, preavviso_giorni, stato
   (attivo/scaduto/rinnovato/disdetto), referente, note.
-  - **importo** è il prezzo unitario; il totale del servizio è
-    `quantita * importo`. La quantità serve per servizi a postazione/licenza
-    (es. antivirus: N postazioni x prezzo unitario).
+  - **data_inizio / data_fine**: il servizio è valido da data_inizio fino a
+    data_fine (fine contratto, inclusa).
+  - **cadenza_mesi**: ogni quanti mesi il servizio va fatturato (1 = mensile,
+    3 = trimestrale, 6 = semestrale, 12 = annuale, ecc.). Sostituisce il
+    vecchio Enum `ricorrenza`. NON esistono più servizi "una tantum": tutto è
+    ricorrente (per un pagamento singolo si usa data_fine = data_inizio).
+  - **importo** è il prezzo unitario di default di OGNI occorrenza; il totale
+    di un'occorrenza è `quantita * importo` salvo override (vedi sotto). La
+    quantità serve per servizi a postazione/licenza (es. antivirus).
   - **referente**: persona/collega a cui va fatturato il servizio, quando
-    diverso dal cliente finale (es. fatturo a un collega i servizi dei suoi
-    clienti). Campo testuale opzionale.
-  - **rinnovo_automatico** (bool, default False): se True, alla scadenza il
-    sistema avanza automaticamente data_scadenza alla ricorrenza successiva
-    (annuale → +1 anno, mensile → +1 mese) e registra un RinnovoLog. Se False,
-    la scadenza resta fissa finché non viene modificata o rinnovata a mano.
-- **RinnovoLog**: id, servizio_id (FK), data_rinnovo (la scadenza che è stata
-  rinnovata), nuova_scadenza, importo, quantita, totale (snapshot al momento
-  del rinnovo). Serve a non perdere nessun rinnovo da fatturare e a tenere lo
-  storico economico per cliente. cascade delete con il servizio.
+    diverso dal cliente finale. Campo testuale opzionale.
+
+- **Occorrenza** (concetto CALCOLATO, NON una tabella): una singola scadenza
+  fatturabile. Le occorrenze si generano al volo partendo da data_inizio e
+  aggiungendo cadenza_mesi ripetutamente, finché la data <= data_fine.
+  - Ogni occorrenza cade nel **giorno del mese di data_inizio** (es. inizio il
+    15 → ogni occorrenza il giorno 15 del suo mese). Se un mese non ha quel
+    giorno (es. il 31 a febbraio), usare l'ultimo giorno valido del mese.
+  - Il totale di un'occorrenza usa l'importo/quantita del servizio, a meno che
+    esista un OverrideImporto per quella specifica data.
+
+- **OverrideImporto**: id, servizio_id (FK), data_occorrenza, importo,
+  quantita. Permette di correggere importo/quantita di UNA specifica
+  occorrenza senza cambiare il default del servizio. La logica di calcolo
+  delle occorrenze, per ogni data, usa l'override se presente, altrimenti il
+  default del servizio. cascade delete con il servizio. Vincolo di unicità su
+  (servizio_id, data_occorrenza).
+
 - **Utente**: id, username, password_hash, ruolo, attivo.
 - **NotificaLog**: id, servizio_id (FK), canale, inviata_il, esito, dettaglio.
 
 ## Funzionalità chiave
 
 - CRUD completo clienti e servizi.
-- Dashboard con servizi raggruppati per mese di scadenza.
+- La pagina servizi mostra anche la colonna **Referente**.
+- Dashboard: mostra le **occorrenze** che cadono nel mese selezionato (NON i
+  servizi una volta sola). Un servizio mensile valido per 12 mesi compare in
+  12 mesi diversi, uno trimestrale ogni 3 mesi, ecc.
+  - Le occorrenze di mesi **già passati** vengono comunque mostrate, ma marcate
+    visivamente come "passate".
+  - Evidenziare le occorrenze scadute / in scadenza entro preavviso_giorni.
 - Vista "riepilogo da fatturare" per un mese selezionato:
-  - Include SOLO i servizi in stato "attivo" (esclude disdetti e rinnovati).
-  - Raggruppa principalmente per cliente, con somma dei totali
-    (`quantita * importo`) per ogni cliente e totale complessivo del mese.
+  - Include SOLO occorrenze di servizi in stato "attivo" (esclude
+    disdetti/rinnovati).
+  - Raggruppa per cliente, con subtotale per cliente e totale complessivo del
+    mese. Il totale di ogni occorrenza rispetta eventuali OverrideImporto.
   - Esportabile in CSV.
-- Avanzamento automatico scadenze (servizi con rinnovo_automatico=True):
-  - Uno scheduler periodico controlla i servizi attivi con rinnovo_automatico
-    la cui data_scadenza è raggiunta/superata.
-  - Per ognuno: registra un RinnovoLog (snapshot importo/quantita/totale e
-    scadenza rinnovata) PRIMA di spostare la data, così il rinnovo resta
-    tracciato e fatturabile, poi avanza data_scadenza alla ricorrenza
-    successiva.
-  - Deve recuperare gli avanzamenti saltati se l'app è stata spenta (avanzare
-    finché la nuova scadenza è nel futuro), generando un RinnovoLog per ogni
-    periodo saltato.
-  - I servizi con ricorrenza "una_tantum" non avanzano mai, anche se il flag
-    fosse attivo.
-- Invio notifiche automatiche secondo la soglia di preavviso.
+- Calcolo occorrenze: implementare in un modulo di servizio dedicato e ben
+  testato (è il cuore dell'app). Mantenere SEMPRE Decimal per i valori
+  monetari, mai float.
+- Invio notifiche automatiche secondo la soglia di preavviso (sulle occorrenze
+  in avvicinamento).
 - Gestione utenti (solo admin).
+
+> NOTA: con il modello a occorrenze calcolate, lo "scheduler di avanzamento
+> automatico delle scadenze" non serve più: le occorrenze future esistono già
+> in modo implicito tra data_inizio e data_fine. Il flag rinnovo_automatico e
+> il modello RinnovoLog sono quindi rimossi dal progetto. Resta valido lo
+> scheduler per le NOTIFICHE.
 
 ## Convenzioni di progetto
 

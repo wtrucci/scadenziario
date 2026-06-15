@@ -1,23 +1,23 @@
 """
-Expiry-status presentation helper, shared by the services list, the dashboard
-and the billing summary so the highlighting rule lives in a single place.
+Presentation helper for an occurrence's temporal state, used by the dashboard so
+the highlighting rule lives in a single place.
+
+With the occurrence model every billable date is concrete, so relative to today
+an occurrence is in one of three states:
+
+- ``"row-passata"``      its date has already elapsed (shown but muted),
+- ``"row-in-scadenza"``  its date falls within ``preavviso_giorni`` from today,
+- ``""``                 further in the future (no highlight).
 """
 from __future__ import annotations
 
 from datetime import date, timedelta
 
-from app.models.servizio import Servizio
 
-
-def classe_scadenza(servizio: Servizio, oggi: date) -> str:
-    """Return the CSS row class for a service based on its expiry:
-
-    - ``"row-scaduta"``     if it has already expired,
-    - ``"row-in-scadenza"`` if it expires within its ``preavviso_giorni`` window,
-    - ``""``                otherwise.
-    """
-    if servizio.data_scadenza < oggi:
-        return "row-scaduta"
-    if servizio.data_scadenza <= oggi + timedelta(days=servizio.preavviso_giorni):
+def classe_occorrenza(data_occorrenza: date, preavviso_giorni: int, oggi: date) -> str:
+    """Return the CSS row class for an occurrence given today's date."""
+    if data_occorrenza < oggi:
+        return "row-passata"
+    if data_occorrenza <= oggi + timedelta(days=preavviso_giorni):
         return "row-in-scadenza"
     return ""

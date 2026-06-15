@@ -8,12 +8,6 @@ class TipoServizio(enum.Enum):
     altro = "altro"
 
 
-class Ricorrenza(enum.Enum):
-    annuale = "annuale"
-    mensile = "mensile"
-    una_tantum = "una_tantum"
-
-
 class StatoServizio(enum.Enum):
     attivo = "attivo"
     scaduto = "scaduto"
