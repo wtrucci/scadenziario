@@ -316,3 +316,51 @@ tr.row-in-scadenza:hover { background: #fef3c7 !important; }
     color: var(--error-text);
     font-size: 0.9rem;
 }
+
+/* --------------------------------------- Dashboard / billing summary */
+
+/* Month selector (previous / current / next) */
+.month-nav {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    margin-bottom: 1rem;
+}
+
+.month-nav-current {
+    font-weight: 600;
+    font-size: 1.1rem;
+}
+
+.month-heading {
+    margin: 0.5rem 0 1rem;
+    font-size: 1.25rem;
+}
+
+/* One block per customer in the billing summary */
+.cliente-group {
+    margin-bottom: 2rem;
+}
+
+.cliente-group h3 {
+    margin: 0 0 0.5rem;
+    font-size: 1.05rem;
+}
+
+/* Per-customer subtotal row in the summary table footer */
+.subtotal-row td {
+    border-top: 2px solid var(--border);
+    font-weight: 500;
+}
+
+/* Grand total for the month */
+.totale-mese {
+    margin-top: 1rem;
+    padding: 0.85rem 1rem;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    text-align: right;
+    font-size: 1.1rem;
+}

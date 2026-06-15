@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+
+{% block title %}Riepilogo da fatturare — Scadenziario{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Riepilogo da fatturare</h1>
+    <a class="btn" href="/riepilogo/export?mese={{ nav.chiave }}">Esporta CSV</a>
+</div>
+
+{% with base_url = "/riepilogo" %}
+{% include "partials/_navigazione_mese.html" %}
+{% endwith %}
+
+<h2 class="month-heading">{{ nav.etichetta }}</h2>
+<p class="muted">Solo servizi in stato “attivo” (esclusi disdetti e rinnovati).</p>
+
+{% if gruppi %}
+{% for g in gruppi %}
+<section class="cliente-group">
+    <h3>{{ g.cliente.nome }}</h3>
+    <table class="table-servizi">
+        <thead>
+            <tr>
+                <th>Descrizione</th>
+                <th>Tipo</th>
+                <th>Scadenza</th>
+                <th>Referente</th>
+                <th class="col-num">Qtà</th>
+                <th class="col-num">Importo unit.</th>
+                <th class="col-num">Totale</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for s in g.servizi %}
+            <tr>
+                <td>{{ s.descrizione }}</td>
+                <td><span class="badge badge-tipo">{{ s.tipo.value }}</span></td>
+                <td class="col-data">{{ s.data_scadenza.strftime('%d/%m/%Y') }}</td>
+                <td>{% if s.referente %}{{ s.referente }}{% else %}<span class="muted">—</span>{% endif %}</td>
+                <td class="col-num">{{ s.quantita }}</td>
+                <td class="col-num">{{ "%.2f"|format(s.importo) }} {{ s.valuta }}</td>
+                <td class="col-num">{{ "%.2f"|format(s.totale) }} {{ s.valuta }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+        <tfoot>
+            <tr class="subtotal-row">
+                <td colspan="6" class="col-num">Subtotale {{ g.cliente.nome }}</td>
+                <td class="col-num"><strong>{{ "%.2f"|format(g.subtotale) }}</strong></td>
+            </tr>
+        </tfoot>
+    </table>
+</section>
+{% endfor %}
+
+<div class="totale-mese">
+    Totale {{ nav.etichetta }}: <strong>{{ "%.2f"|format(totale) }}</strong>
+</div>
+{% else %}
+<p class="muted">Nessun servizio attivo in scadenza in {{ nav.etichetta }}.</p>
+{% endif %}
+{% endblock %}

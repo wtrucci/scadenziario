@@ -1,0 +1,7 @@
+{# Month selector: previous / current / next.
+   Context: nav (dict from _navigazione_mese), base_url (str, e.g. "/" or "/riepilogo"). #}
+<div class="month-nav">
+    <a class="btn btn-secondary" href="{{ base_url }}?mese={{ nav.prec.chiave }}">← {{ nav.prec.etichetta }}</a>
+    <span class="month-nav-current">{{ nav.etichetta }}</span>
+    <a class="btn btn-secondary" href="{{ base_url }}?mese={{ nav.succ.chiave }}">{{ nav.succ.etichetta }} →</a>
+</div>

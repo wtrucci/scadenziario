@@ -4,7 +4,7 @@ CRUD routes for services (servizi).
 All routes require an authenticated user (require_login).
 Delete uses HTMX hx-delete; all other writes use standard HTML form POST.
 """
-from datetime import date, timedelta
+from datetime import date
 from decimal import Decimal, InvalidOperation
 from typing import Optional
 
@@ -20,6 +20,7 @@ from app.models.cliente import Cliente
 from app.models.enums import Ricorrenza, StatoServizio, TipoServizio
 from app.models.servizio import Servizio
 from app.models.utente import Utente
+from app.services.scadenze import classe_scadenza
 from app.templating import templates
 
 router = APIRouter(prefix="/servizi")
@@ -34,15 +35,6 @@ def _get_or_404(db: Session, servizio_id: int) -> Servizio:
     if s is None:
         raise HTTPException(status_code=404, detail="Servizio non trovato")
     return s
-
-
-def _scadenza_class(s: Servizio, oggi: date) -> str:
-    """Return a CSS class name based on the service's expiry status."""
-    if s.data_scadenza < oggi:
-        return "row-scaduta"
-    if s.data_scadenza <= oggi + timedelta(days=s.preavviso_giorni):
-        return "row-in-scadenza"
-    return ""
 
 
 def _clienti_attivi(db: Session) -> list[Cliente]:
@@ -200,7 +192,7 @@ def lista_servizi(
 ):
     servizi = db.scalars(select(Servizio).order_by(Servizio.data_scadenza)).all()
     oggi = date.today()
-    righe = [(s, _scadenza_class(s, oggi)) for s in servizi]
+    righe = [(s, classe_scadenza(s, oggi)) for s in servizi]
     return templates.TemplateResponse(
         request, "servizi/lista.html", {"user": user, "righe": righe, "oggi": oggi}
     )

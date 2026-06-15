@@ -6,7 +6,7 @@ import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import Depends, FastAPI, Request
+from fastapi import FastAPI, Request
 from fastapi.responses import RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.sessions import SessionMiddleware
@@ -18,10 +18,8 @@ from app.database import SessionLocal
 from app.dependencies import (
     NotAuthenticatedError,
     NotAuthorizedError,
-    require_login,
 )
-from app.models.utente import Utente
-from app.routes import auth, clienti, servizi
+from app.routes import auth, clienti, dashboard, servizi
 from app.templating import templates
 
 logging.basicConfig(level=logging.INFO)
@@ -85,13 +83,6 @@ async def not_authorized_handler(request: Request, exc: NotAuthorizedError):
 
 
 app.include_router(auth.router)
+app.include_router(dashboard.router)
 app.include_router(clienti.router)
 app.include_router(servizi.router)
-
-
-@app.get("/")
-def dashboard(request: Request, user: Utente = Depends(require_login)):
-    """Placeholder dashboard, visible only to authenticated users."""
-    return templates.TemplateResponse(
-        request, "dashboard/index.html", {"user": user}
-    )
