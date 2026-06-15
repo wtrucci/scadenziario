@@ -18,12 +18,14 @@ from fastapi.responses import RedirectResponse, Response
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.database import get_db
+from app.database import get_db, utcnow
 from app.dependencies import require_login
 from app.models.cliente import Cliente
 from app.models.enums import StatoServizio, TipoServizio
+from app.models.override_importo import OverrideImporto
 from app.models.servizio import Servizio
 from app.models.utente import Utente
+from app.services.occorrenze import occorrenze_nel_periodo
 from app.services.periodi import etichetta_cadenza
 from app.templating import templates
 
@@ -389,3 +391,53 @@ def elimina_servizio(
     db.delete(s)
     db.commit()
     return Response(status_code=200)
+
+
+@router.post("/{servizio_id}/occorrenze/{data_occorrenza}/fatturato")
+def toggle_fatturato(
+    request: Request,
+    servizio_id: int,
+    data_occorrenza: date,
+    db: Session = Depends(get_db),
+    user: Utente = Depends(require_login),
+):
+    """
+    Toggle the "fatturato" flag for one occurrence (HTMX).
+
+    Occurrences are not stored, so the flag lives on a per-occurrence state row
+    (OverrideImporto). This creates the row if missing, or updates it, leaving
+    any price/quantity correction untouched. We accept the date only if it is a
+    real occurrence of the service, to avoid creating state rows on bogus dates.
+    Returns the refreshed toggle button partial.
+    """
+    s = _get_or_404(db, servizio_id)
+
+    # Guard: the date must be an actual occurrence of this service.
+    if not occorrenze_nel_periodo(s, data_occorrenza, data_occorrenza):
+        raise HTTPException(status_code=404, detail="Occorrenza non trovata")
+
+    stato = db.scalars(
+        select(OverrideImporto)
+        .where(OverrideImporto.servizio_id == servizio_id)
+        .where(OverrideImporto.data_occorrenza == data_occorrenza)
+    ).first()
+
+    if stato is None:
+        # No state row yet: create one carrying only the fatturato flag.
+        stato = OverrideImporto(servizio_id=servizio_id, data_occorrenza=data_occorrenza)
+        db.add(stato)
+
+    # Flip the flag; record/clear the timestamp accordingly.
+    stato.fatturato = not stato.fatturato
+    stato.fatturato_il = utcnow() if stato.fatturato else None
+    db.commit()
+
+    return templates.TemplateResponse(
+        request,
+        "servizi/_toggle_fatturato.html",
+        {
+            "servizio_id": servizio_id,
+            "data_occorrenza": data_occorrenza,
+            "fatturato": stato.fatturato,
+        },
+    )

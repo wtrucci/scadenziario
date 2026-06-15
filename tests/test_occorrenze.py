@@ -189,5 +189,59 @@ class TestOccorrenze(unittest.TestCase):
         self.assertEqual(o.totale, Decimal("37.02"))
 
 
+class TestStatoOccorrenza(unittest.TestCase):
+    """Per-occurrence state rows: NULL price fallback, fatturato, visual state."""
+
+    # A state row that exists ONLY to carry the fatturato flag (importo and
+    # quantita left NULL) must fall back to the service defaults and must NOT be
+    # reported as an override.
+    def test_riga_stato_senza_override_usa_default(self):
+        s = _servizio(date(2025, 1, 10), date(2025, 1, 10), cadenza_mesi=1,
+                      importo="10.00", quantita=2)
+        s.override_importi.append(
+            OverrideImporto(data_occorrenza=date(2025, 1, 10), fatturato=True)
+        )
+        o = occorrenze.occorrenze_nel_periodo(s, *TUTTO, oggi=date(2025, 1, 1))[0]
+        self.assertFalse(o.da_override)
+        self.assertEqual(o.importo, Decimal("10.00"))
+        self.assertEqual(o.quantita, 2)
+        self.assertEqual(o.totale, Decimal("20.00"))
+        self.assertTrue(o.fatturato)
+
+    # A billed occurrence: fatturato True and stato_visivo "fatturato",
+    # regardless of the date.
+    def test_occorrenza_fatturata(self):
+        s = _servizio(date(2025, 1, 10), date(2025, 1, 10), cadenza_mesi=1)
+        s.override_importi.append(
+            OverrideImporto(data_occorrenza=date(2025, 1, 10), fatturato=True)
+        )
+        # Even with a past date, "fatturato" wins over "da_fatturare".
+        o = occorrenze.occorrenze_nel_periodo(s, *TUTTO, oggi=date(2025, 6, 1))[0]
+        self.assertTrue(o.fatturato)
+        self.assertEqual(o.stato_visivo, "fatturato")
+
+    # A past, NOT billed occurrence must be flagged "da_fatturare".
+    def test_passata_non_fatturata_e_da_fatturare(self):
+        s = _servizio(date(2025, 1, 10), date(2025, 1, 10), cadenza_mesi=1)
+        o = occorrenze.occorrenze_nel_periodo(s, *TUTTO, oggi=date(2025, 6, 1))[0]
+        self.assertFalse(o.fatturato)
+        self.assertEqual(o.stato_visivo, "da_fatturare")
+
+    # Full visual-state precedence on a single monthly service (preavviso 30d).
+    def test_stato_visivo_precedenza(self):
+        s = _servizio(date(2025, 1, 5), date(2025, 12, 5), cadenza_mesi=1)
+        oggi = date(2025, 6, 1)
+        per_data = {
+            o.data_occorrenza: o
+            for o in occorrenze.occorrenze_nel_periodo(s, *TUTTO, oggi=oggi)
+        }
+        # Past, not billed -> da_fatturare.
+        self.assertEqual(per_data[date(2025, 5, 5)].stato_visivo, "da_fatturare")
+        # Within 30 days ahead (05/06 is 4 days away) -> in_scadenza.
+        self.assertEqual(per_data[date(2025, 6, 5)].stato_visivo, "in_scadenza")
+        # Far in the future -> normale.
+        self.assertEqual(per_data[date(2025, 12, 5)].stato_visivo, "normale")
+
+
 if __name__ == "__main__":
     unittest.main()

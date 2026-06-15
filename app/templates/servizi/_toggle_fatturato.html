@@ -1,0 +1,10 @@
+{# Partial: the "fatturato" toggle button for a single occurrence.
+   Context: servizio_id (int), data_occorrenza (date), fatturato (bool).
+   It posts to the toggle endpoint and swaps itself with the fresh state. #}
+<button id="fatturato-{{ servizio_id }}-{{ data_occorrenza.isoformat() }}"
+        class="btn-link {% if fatturato %}fatturato-on{% else %}fatturato-off{% endif %}"
+        hx-post="/servizi/{{ servizio_id }}/occorrenze/{{ data_occorrenza.isoformat() }}/fatturato"
+        hx-swap="outerHTML"
+        title="{% if fatturato %}Segna come da fatturare{% else %}Segna come fatturato{% endif %}">
+    {% if fatturato %}✓ Fatturato{% else %}Da fatturare{% endif %}
+</button>

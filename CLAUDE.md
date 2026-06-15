@@ -82,12 +82,20 @@ le scelte tecniche quando non sono banali.
   - Il totale di un'occorrenza usa l'importo/quantita del servizio, a meno che
     esista un OverrideImporto per quella specifica data.
 
-- **OverrideImporto**: id, servizio_id (FK), data_occorrenza, importo,
-  quantita. Permette di correggere importo/quantita di UNA specifica
-  occorrenza senza cambiare il default del servizio. La logica di calcolo
-  delle occorrenze, per ogni data, usa l'override se presente, altrimenti il
-  default del servizio. cascade delete con il servizio. Vincolo di unicità su
-  (servizio_id, data_occorrenza).
+- **OverrideImporto** (tabella di STATO per-occorrenza): id, servizio_id (FK),
+  data_occorrenza, importo (nullable), quantita (nullable), fatturato (bool,
+  default False), fatturato_il (nullable). Rappresenta "ciò che rende speciale
+  una specifica occorrenza":
+  - importo/quantita: se valorizzati, correggono il default del servizio per
+    quella sola occorrenza (se NULL si usa il default del servizio).
+  - fatturato: True quando l'utente marca quell'occorrenza come fatturata;
+    fatturato_il registra quando. È uno stato PERSISTENTE per-occorrenza, e
+    poiché le occorrenze non sono righe, questa tabella è il posto dove
+    salvarlo. Marcare/smarcare "fatturato" crea o aggiorna la riga per
+    (servizio_id, data_occorrenza).
+  - cascade delete con il servizio. Vincolo di unicità su
+    (servizio_id, data_occorrenza): al massimo una riga di stato per
+    occorrenza.
 
 - **Utente**: id, username, password_hash, ruolo, attivo.
 - **NotificaLog**: id, servizio_id (FK), canale, inviata_il, esito, dettaglio.
@@ -99,14 +107,23 @@ le scelte tecniche quando non sono banali.
 - Dashboard: mostra le **occorrenze** che cadono nel mese selezionato (NON i
   servizi una volta sola). Un servizio mensile valido per 12 mesi compare in
   12 mesi diversi, uno trimestrale ogni 3 mesi, ecc.
-  - Le occorrenze di mesi **già passati** vengono comunque mostrate, ma marcate
-    visivamente come "passate".
-  - Evidenziare le occorrenze scadute / in scadenza entro preavviso_giorni.
+  - Le occorrenze riportano un flag **fatturato** (dalla tabella di stato).
+  - Stato visivo di un'occorrenza (sostituisce il vecchio "passata"):
+    - fatturato=True → mostrata come "Fatturato".
+    - non fatturata e data passata/scaduta → ALERT "Da fatturare" ben
+      evidenziato (è ciò che l'utente non deve dimenticare): NON va sbiadita.
+    - non fatturata e in avvicinamento entro preavviso_giorni → "In scadenza".
+    - non fatturata e futura → stato normale.
+  - L'utente può marcare/smarcare "fatturato" su una singola occorrenza
+    (toggle, via HTMX), che crea/aggiorna la relativa riga di stato.
+- Filtri su pagina servizi e dashboard: per cliente, per referente e per stato
+  (es. fatturato / da fatturare). I filtri sono combinabili.
 - Vista "riepilogo da fatturare" per un mese selezionato:
   - Include SOLO occorrenze di servizi in stato "attivo" (esclude
     disdetti/rinnovati).
   - Raggruppa per cliente, con subtotale per cliente e totale complessivo del
-    mese. Il totale di ogni occorrenza rispetta eventuali OverrideImporto.
+    mese. Il totale di ogni occorrenza rispetta eventuali correzioni di
+    importo presenti nella tabella di stato per-occorrenza.
   - Esportabile in CSV.
 - Calcolo occorrenze: implementare in un modulo di servizio dedicato e ben
   testato (è il cuore dell'app). Mantenere SEMPRE Decimal per i valori
