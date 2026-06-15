@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard — Scadenziario{% endblock %}
+
+{% block nav %}
+<nav class="topbar-nav">
+    <span class="user">{{ user.username }}</span>
+    <a href="/logout">Esci</a>
+</nav>
+{% endblock %}
+
+{% block content %}
+<h1>Dashboard</h1>
+<p>Benvenuto, <strong>{{ user.username }}</strong>.</p>
+<p class="muted">Questa è una pagina segnaposto. Le funzionalità verranno aggiunte nei prossimi blocchi.</p>
+{% endblock %}

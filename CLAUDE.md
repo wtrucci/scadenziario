@@ -35,9 +35,14 @@ le scelte tecniche quando non sono banali.
 - **Frontend:** template server-side Jinja2 + HTMX (NIENTE SPA, niente build
   step JavaScript, niente npm per il frontend).
 - **Scheduler notifiche:** APScheduler nel processo applicativo.
-- **Autenticazione:** login utente/password con hashing sicuro (bcrypt/argon2),
-  sessioni. Ruoli base (admin / utente). Predisporre per futura integrazione
-  OIDC, ma NON implementarla ora.
+- **Autenticazione:** login utente/password con hashing sicuro tramite la
+  libreria `bcrypt` usata **direttamente** (NON passlib, che è non mantenuto e
+  incompatibile con bcrypt >= 4.1). Sessioni firmate via SECRET_KEY. Ruoli base
+  (admin / utente). Predisporre per futura integrazione OIDC, ma NON
+  implementarla ora.
+  - Il **rehashing trasparente** delle password (re-hash al login quando il
+    cost factor cambia) NON è implementato: accettabile per pochi utenti
+    interni. Se servisse in futuro, si può aggiungere in `app/security.py`.
 
 ## Canali di notifica
 

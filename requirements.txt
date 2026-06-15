@@ -13,8 +13,9 @@ alembic>=1.14.0
 # Session signing (used by Starlette's SessionMiddleware)
 itsdangerous>=2.2.0
 
-# Password hashing
-passlib[bcrypt]>=1.7.4
+# Password hashing. We use bcrypt directly (NOT passlib, which is unmaintained
+# and breaks on bcrypt>=4.1). Tested on 5.0.0.
+bcrypt>=4.1,<6
 
 # Background scheduler (notifications)
 apscheduler>=3.10.0
