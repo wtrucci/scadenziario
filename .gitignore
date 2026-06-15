@@ -1,0 +1,50 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# Environment variables (never commit real secrets)
+.env
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+data/
+
+# Alembic
+# (versions/ is tracked; the compiled cache is not)
+alembic/__pycache__/
+
+# IDE / editors
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Coverage / testing
+.coverage
+htmlcov/
+.pytest_cache/

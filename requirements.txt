@@ -1,0 +1,26 @@
+# Web framework
+fastapi>=0.115.0
+uvicorn[standard]>=0.32.0
+
+# Templating
+jinja2>=3.1.0
+python-multipart>=0.0.12   # required for HTML form parsing in FastAPI
+
+# Database
+sqlalchemy>=2.0.0
+alembic>=1.14.0
+
+# Session signing (used by Starlette's SessionMiddleware)
+itsdangerous>=2.2.0
+
+# Password hashing
+passlib[bcrypt]>=1.7.4
+
+# Background scheduler (notifications)
+apscheduler>=3.10.0
+
+# HTTP client (Telegram Bot API calls)
+httpx>=0.27.0
+
+# Environment variable loading
+python-dotenv>=1.0.0
