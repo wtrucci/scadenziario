@@ -21,7 +21,7 @@ from app.dependencies import (
     require_login,
 )
 from app.models.utente import Utente
-from app.routes import auth, clienti
+from app.routes import auth, clienti, servizi
 from app.templating import templates
 
 logging.basicConfig(level=logging.INFO)
@@ -86,6 +86,7 @@ async def not_authorized_handler(request: Request, exc: NotAuthorizedError):
 
 app.include_router(auth.router)
 app.include_router(clienti.router)
+app.include_router(servizi.router)
 
 
 @app.get("/")

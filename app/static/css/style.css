@@ -184,7 +184,11 @@ tbody tr:hover { background: #f9fafb; }
     font-weight: 500;
 }
 
-.field input[type="text"],
+/* Single base rule for every text-like control, regardless of type.
+   Covers text, password, number, date, email, etc. — and select.
+   Checkboxes opt out below via a more-specific selector. */
+.field input,
+.field select,
 .field textarea {
     width: 100%;
     padding: 0.5rem 0.65rem;
@@ -192,18 +196,20 @@ tbody tr:hover { background: #f9fafb; }
     border-radius: 6px;
     font-size: 0.95rem;
     font-family: inherit;
+    background: var(--surface);
+    color: var(--text);
 }
 
 .field textarea { resize: vertical; }
 
-/* Checkbox + label side by side */
+/* Checkbox + label side by side — resets the base rule's width */
 .field-inline {
     display: flex;
     align-items: center;
     gap: 0.5rem;
 }
 
-.field-inline input[type="checkbox"] { width: auto; margin: 0; }
+.field-inline input[type="checkbox"] { width: auto; margin: 0; background: none; }
 .field-inline label { margin: 0; font-weight: normal; }
 
 .required { color: var(--danger); }
@@ -228,6 +234,55 @@ tbody tr:hover { background: #f9fafb; }
     max-width: 520px;
 }
 
+/* ----------------------------------------------------------- Row highlights */
+
+tr.row-scaduta { background: #fef2f2 !important; }
+tr.row-scaduta:hover { background: #fee2e2 !important; }
+tr.row-in-scadenza { background: #fffbeb !important; }
+tr.row-in-scadenza:hover { background: #fef3c7 !important; }
+
+/* ------------------------------------------------------------------ Badges */
+
+.badge-warn { background: #fef3c7; color: #92400e; }
+
+/* Tipo badges */
+.badge-tipo { background: #eff6ff; color: #1e40af; }
+
+/* Stato badges */
+.badge-stato-attivo    { background: var(--ok-bg);  color: var(--ok-text); }
+.badge-stato-scaduto   { background: #fef2f2; color: var(--error-text); }
+.badge-stato-rinnovato { background: #f0fdf4; color: #166534; }
+.badge-stato-disdetto  { background: var(--off-bg); color: var(--off-text); }
+
+/* Legend below the servizi table */
+.table-legend { font-size: 0.82rem; color: var(--muted); margin-top: 0.5rem; }
+.legend-dot { display: inline-block; width: 10px; height: 10px; border-radius: 2px; }
+.legend-scaduta    { background: #fecaca; }
+.legend-in-scadenza { background: #fde68a; }
+
+/* Numeric columns (qty, price, total) — right-aligned */
+.col-num { text-align: right; white-space: nowrap; }
+.col-data { white-space: nowrap; }
+
+/* -------------------------------------------------- Multi-column form rows */
+
+.form-card-wide { max-width: 720px; }
+
+.field-row-2,
+.field-row-3 {
+    display: grid;
+    gap: 1rem;
+    margin-bottom: 1rem;
+}
+
+.field-row-2 { grid-template-columns: 1fr 1fr; }
+.field-row-3 { grid-template-columns: 1fr 1fr 1fr; }
+
+.field-row-2 .field,
+.field-row-3 .field { margin-bottom: 0; }
+
+
+/* ---------------------------------------------------------- Error inline */
 /* Error message shown inline in a table row (e.g. blocked delete) */
 .error-inline {
     color: var(--error-text);

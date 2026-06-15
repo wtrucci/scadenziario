@@ -1,0 +1,29 @@
+{# Partial: one <tr> for the servizi list.
+   Context: s (Servizio), cls (CSS class string), oggi (date) #}
+<tr id="servizio-{{ s.id }}" class="{{ cls }}">
+    <td>{{ s.cliente.nome }}</td>
+    <td>{{ s.descrizione }}</td>
+    <td><span class="badge badge-tipo">{{ s.tipo.value }}</span></td>
+    <td class="col-data">
+        {{ s.data_scadenza.strftime('%d/%m/%Y') }}
+        {% if cls == 'row-scaduta' %}
+        <span class="badge badge-off">Scaduto</span>
+        {% elif cls == 'row-in-scadenza' %}
+        <span class="badge badge-warn">In scadenza</span>
+        {% endif %}
+    </td>
+    <td class="col-num">{{ s.quantita }}</td>
+    <td class="col-num">{{ "%.2f"|format(s.importo) }} {{ s.valuta }}</td>
+    <td class="col-num"><strong>{{ "%.2f"|format(s.totale) }} {{ s.valuta }}</strong></td>
+    <td><span class="badge badge-stato-{{ s.stato.value }}">{{ s.stato.value }}</span></td>
+    <td class="col-actions">
+        <a href="/servizi/{{ s.id }}/modifica">Modifica</a>
+        <button class="btn-link btn-danger"
+            hx-delete="/servizi/{{ s.id }}"
+            hx-target="#servizio-{{ s.id }}"
+            hx-swap="outerHTML"
+            hx-confirm="Eliminare il servizio '{{ s.descrizione }}'?">
+            Elimina
+        </button>
+    </td>
+</tr>

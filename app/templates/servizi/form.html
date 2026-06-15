@@ -1,0 +1,122 @@
+{% extends "base.html" %}
+
+{% block title %}{{ titolo }} — Scadenziario{% endblock %}
+
+{% block content %}
+<h1>{{ titolo }}</h1>
+
+{% if errori %}
+<ul class="error-list">
+    {% for e in errori %}<li>{{ e }}</li>{% endfor %}
+</ul>
+{% endif %}
+
+<form method="post" action="{{ action }}" class="form-card form-card-wide">
+
+    {# --- Cliente --- #}
+    <div class="field">
+        <label for="cliente_id">Cliente <span class="required">*</span></label>
+        <select id="cliente_id" name="cliente_id" required>
+            <option value="">— seleziona —</option>
+            {% for c in clienti_attivi %}
+            <option value="{{ c.id }}"
+                {% if valori.cliente_id == c.id|string %}selected{% endif %}
+                {% if not c.attivo %}class="muted"{% endif %}>
+                {{ c.nome }}{% if not c.attivo %} (inattivo){% endif %}
+            </option>
+            {% endfor %}
+        </select>
+    </div>
+
+    {# --- Descrizione --- #}
+    <div class="field">
+        <label for="descrizione">Descrizione <span class="required">*</span></label>
+        <input type="text" id="descrizione" name="descrizione"
+               value="{{ valori.descrizione }}" maxlength="300" required autofocus>
+    </div>
+
+    {# --- Tipo / Ricorrenza / Stato (3 colonne) --- #}
+    <div class="field-row-3">
+        <div class="field">
+            <label for="tipo">Tipo <span class="required">*</span></label>
+            <select id="tipo" name="tipo" required>
+                {% for t in tipi_servizio %}
+                <option value="{{ t.value }}" {% if valori.tipo == t.value %}selected{% endif %}>
+                    {{ t.value | capitalize }}
+                </option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="field">
+            <label for="ricorrenza">Ricorrenza <span class="required">*</span></label>
+            <select id="ricorrenza" name="ricorrenza" required>
+                {% for r in ricorrenze %}
+                <option value="{{ r.value }}" {% if valori.ricorrenza == r.value %}selected{% endif %}>
+                    {{ r.value.replace('_', ' ') | capitalize }}
+                </option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="field">
+            <label for="stato">Stato <span class="required">*</span></label>
+            <select id="stato" name="stato" required>
+                {% for st in stati %}
+                <option value="{{ st.value }}" {% if valori.stato == st.value %}selected{% endif %}>
+                    {{ st.value | capitalize }}
+                </option>
+                {% endfor %}
+            </select>
+        </div>
+    </div>
+
+    {# --- Scadenza / Preavviso --- #}
+    <div class="field-row-2">
+        <div class="field">
+            <label for="data_scadenza">Data scadenza <span class="required">*</span></label>
+            <input type="date" id="data_scadenza" name="data_scadenza"
+                   value="{{ valori.data_scadenza }}" required>
+        </div>
+        <div class="field">
+            <label for="preavviso_giorni">Preavviso (giorni) <span class="required">*</span></label>
+            <input type="number" id="preavviso_giorni" name="preavviso_giorni"
+                   value="{{ valori.preavviso_giorni }}" min="0" required>
+        </div>
+    </div>
+
+    {# --- Importo / Quantità / Valuta --- #}
+    <div class="field-row-3">
+        <div class="field">
+            <label for="importo">Importo unitario <span class="required">*</span></label>
+            <input type="number" id="importo" name="importo"
+                   value="{{ valori.importo }}" step="0.01" min="0" required>
+        </div>
+        <div class="field">
+            <label for="quantita">Quantità <span class="required">*</span></label>
+            <input type="number" id="quantita" name="quantita"
+                   value="{{ valori.quantita }}" min="1" required>
+        </div>
+        <div class="field">
+            <label for="valuta">Valuta <span class="required">*</span></label>
+            <input type="text" id="valuta" name="valuta"
+                   value="{{ valori.valuta }}" maxlength="3" style="width:6rem">
+        </div>
+    </div>
+
+    {# --- Referente / Note --- #}
+    <div class="field">
+        <label for="referente">Referente</label>
+        <input type="text" id="referente" name="referente"
+               value="{{ valori.referente }}" maxlength="200"
+               placeholder="Referenza cliente finale (opzionale)">
+    </div>
+    <div class="field">
+        <label for="note">Note</label>
+        <textarea id="note" name="note" rows="3">{{ valori.note }}</textarea>
+    </div>
+
+    <div class="form-actions">
+        <button type="submit" class="btn">Salva</button>
+        <a href="/servizi" class="btn btn-secondary">Annulla</a>
+    </div>
+</form>
+{% endblock %}
