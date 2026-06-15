@@ -11,13 +11,17 @@
     {% endif %}
 
     <form method="post" action="/login">
-        <label for="username">Username</label>
-        <input type="text" id="username" name="username" autocomplete="username" required autofocus>
-
-        <label for="password">Password</label>
-        <input type="password" id="password" name="password" autocomplete="current-password" required>
-
-        <button type="submit">Accedi</button>
+        <div class="field">
+            <label for="username">Username</label>
+            <input type="text" id="username" name="username"
+                   autocomplete="username" required autofocus>
+        </div>
+        <div class="field">
+            <label for="password">Password</label>
+            <input type="password" id="password" name="password"
+                   autocomplete="current-password" required>
+        </div>
+        <button type="submit" class="btn">Accedi</button>
     </form>
 </div>
 {% endblock %}

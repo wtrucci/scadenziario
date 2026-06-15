@@ -17,9 +17,15 @@ class Cliente(Base):
     attivo: Mapped[bool] = mapped_column(Boolean, default=True)
     creato_il: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
-    # cascade="all, delete-orphan": deleting a customer also deletes all their services.
+    # No delete cascade: deleting a customer with active services must be blocked
+    # at the application layer (see routes/clienti.py) and at the DB layer
+    # (PRAGMA foreign_keys=ON in database.py). passive_deletes=True tells
+    # SQLAlchemy not to load services into memory before deleting the customer —
+    # if the delete slips past the app-level check, the DB FK constraint fires.
     servizi: Mapped[list[Servizio]] = relationship(
-        back_populates="cliente", cascade="all, delete-orphan"
+        back_populates="cliente",
+        cascade="save-update, merge",
+        passive_deletes=True,
     )
 
     def __repr__(self) -> str:

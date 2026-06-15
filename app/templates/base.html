@@ -11,7 +11,15 @@
 <body>
     <header class="topbar">
         <a class="brand" href="/">Scadenziario</a>
-        {% block nav %}{% endblock %}
+        {% if user is defined and user %}
+        <nav class="topbar-nav">
+            <a href="/">Dashboard</a>
+            <a href="/clienti">Clienti</a>
+            <span class="nav-sep">|</span>
+            <span class="nav-user">{{ user.username }}</span>
+            <a href="/logout">Esci</a>
+        </nav>
+        {% endif %}
     </header>
     <main class="content">
         {% block content %}{% endblock %}

@@ -1,0 +1,31 @@
+{# Partial: one <tr> for the clienti list. Used by lista.html and by the
+   DELETE route when it needs to return the row with an inline error message.
+
+   Expected context:
+     c      — Cliente instance
+     errore — error string, or none/undefined when there is no error
+#}
+<tr id="cliente-{{ c.id }}">
+    <td><strong>{{ c.nome }}</strong></td>
+    <td class="muted">{{ c.note or "—" }}</td>
+    <td>
+        {% if c.attivo %}
+        <span class="badge badge-ok">Sì</span>
+        {% else %}
+        <span class="badge badge-off">No</span>
+        {% endif %}
+    </td>
+    <td class="col-actions">
+        <a href="/clienti/{{ c.id }}/modifica">Modifica</a>
+        <button class="btn-link btn-danger"
+            hx-delete="/clienti/{{ c.id }}"
+            hx-target="#cliente-{{ c.id }}"
+            hx-swap="outerHTML"
+            hx-confirm="Eliminare '{{ c.nome }}'? Questa operazione è irreversibile.">
+            Elimina
+        </button>
+        {% if errore is defined and errore %}
+        <span class="error-inline">{{ errore }}</span>
+        {% endif %}
+    </td>
+</tr>

@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+
+{% block title %}Clienti — Scadenziario{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Clienti</h1>
+    <a class="btn" href="/clienti/nuovo">+ Nuovo cliente</a>
+</div>
+
+{% if clienti %}
+<table>
+    <thead>
+        <tr>
+            <th>Nome</th>
+            <th>Note</th>
+            <th>Attivo</th>
+            <th>Azioni</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for c in clienti %}
+        {% with errore=none %}
+        {% include "clienti/_riga.html" %}
+        {% endwith %}
+        {% endfor %}
+    </tbody>
+</table>
+{% else %}
+<p class="muted">Nessun cliente presente. <a href="/clienti/nuovo">Crea il primo</a>.</p>
+{% endif %}
+{% endblock %}

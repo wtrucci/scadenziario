@@ -8,12 +8,18 @@
     --muted: #6b7280;
     --primary: #2563eb;
     --primary-hover: #1d4ed8;
-    --error: #b91c1c;
+    --danger: #dc2626;
+    --danger-hover: #b91c1c;
+    --error-bg: #fef2f2;
+    --error-border: #fecaca;
+    --error-text: #b91c1c;
+    --ok-bg: #dcfce7;
+    --ok-text: #166534;
+    --off-bg: #f3f4f6;
+    --off-text: #6b7280;
 }
 
-* {
-    box-sizing: border-box;
-}
+* { box-sizing: border-box; }
 
 body {
     margin: 0;
@@ -21,20 +27,26 @@ body {
     background: var(--bg);
     color: var(--text);
     line-height: 1.5;
+    font-size: 0.95rem;
 }
+
+a { color: var(--primary); }
+a:hover { color: var(--primary-hover); }
+
+/* ------------------------------------------------------------------ Topbar */
 
 .topbar {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 0.75rem 1.25rem;
+    padding: 0.6rem 1.5rem;
     background: var(--surface);
     border-bottom: 1px solid var(--border);
 }
 
 .brand {
-    font-weight: 600;
-    font-size: 1.1rem;
+    font-weight: 700;
+    font-size: 1.05rem;
     color: var(--text);
     text-decoration: none;
 }
@@ -43,23 +55,188 @@ body {
     display: flex;
     align-items: center;
     gap: 1rem;
+    font-size: 0.9rem;
 }
 
-.topbar-nav .user {
-    color: var(--muted);
-}
+.nav-sep { color: var(--border); }
+.nav-user { color: var(--muted); }
+
+/* ------------------------------------------------------------------ Layout */
 
 .content {
-    max-width: 960px;
+    max-width: 1000px;
     margin: 2rem auto;
-    padding: 0 1.25rem;
+    padding: 0 1.5rem;
 }
 
-.muted {
+.page-header {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    margin-bottom: 1.25rem;
+}
+
+.page-header h1 { margin: 0; }
+
+.muted { color: var(--muted); }
+
+/* ------------------------------------------------------------------ Buttons */
+
+.btn {
+    display: inline-block;
+    padding: 0.45rem 1rem;
+    background: var(--primary);
+    color: #fff;
+    border: none;
+    border-radius: 6px;
+    font-size: 0.9rem;
+    cursor: pointer;
+    text-decoration: none;
+    line-height: 1.4;
+}
+
+.btn:hover { background: var(--primary-hover); color: #fff; }
+
+.btn.btn-secondary {
+    background: var(--surface);
+    color: var(--text);
+    border: 1px solid var(--border);
+}
+
+.btn.btn-secondary:hover { background: var(--bg); }
+
+/* Inline text-style button (e.g. delete in table rows) */
+.btn-link {
+    background: none;
+    border: none;
+    padding: 0;
+    font-size: inherit;
+    cursor: pointer;
+    text-decoration: underline;
+    line-height: inherit;
+}
+
+.btn-link.btn-danger { color: var(--danger); }
+.btn-link.btn-danger:hover { color: var(--danger-hover); }
+
+/* ------------------------------------------------------------------ Tables */
+
+table {
+    width: 100%;
+    border-collapse: collapse;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+th, td {
+    padding: 0.6rem 0.9rem;
+    text-align: left;
+    border-bottom: 1px solid var(--border);
+}
+
+th {
+    background: var(--bg);
+    font-size: 0.82rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
     color: var(--muted);
 }
 
-/* Login */
+tbody tr:last-child td { border-bottom: none; }
+tbody tr:hover { background: #f9fafb; }
+
+.col-actions { white-space: nowrap; }
+.col-actions a,
+.col-actions button { margin-right: 0.75rem; }
+
+/* ------------------------------------------------------------------ Badges */
+
+.badge {
+    display: inline-block;
+    padding: 0.15rem 0.55rem;
+    border-radius: 99px;
+    font-size: 0.78rem;
+    font-weight: 600;
+}
+
+.badge-ok  { background: var(--ok-bg);  color: var(--ok-text); }
+.badge-off { background: var(--off-bg); color: var(--off-text); }
+
+/* ---------------------------------------------------------------- Form card */
+
+.form-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 1.5rem;
+    max-width: 520px;
+}
+
+.field { margin-bottom: 1rem; }
+
+.field label {
+    display: block;
+    margin-bottom: 0.3rem;
+    font-size: 0.88rem;
+    font-weight: 500;
+}
+
+.field input[type="text"],
+.field textarea {
+    width: 100%;
+    padding: 0.5rem 0.65rem;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    font-size: 0.95rem;
+    font-family: inherit;
+}
+
+.field textarea { resize: vertical; }
+
+/* Checkbox + label side by side */
+.field-inline {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.field-inline input[type="checkbox"] { width: auto; margin: 0; }
+.field-inline label { margin: 0; font-weight: normal; }
+
+.required { color: var(--danger); }
+
+.form-actions {
+    margin-top: 1.5rem;
+    display: flex;
+    gap: 0.75rem;
+    align-items: center;
+}
+
+/* -------------------------------------------------------------- Error list */
+
+.error-list {
+    margin: 0 0 1rem;
+    padding: 0.6rem 0.75rem 0.6rem 1.5rem;
+    background: var(--error-bg);
+    border: 1px solid var(--error-border);
+    border-radius: 6px;
+    color: var(--error-text);
+    font-size: 0.9rem;
+    max-width: 520px;
+}
+
+/* Error message shown inline in a table row (e.g. blocked delete) */
+.error-inline {
+    color: var(--error-text);
+    font-size: 0.85rem;
+    margin-left: 0.5rem;
+}
+
+/* ------------------------------------------------------------ Login page */
+
 .login-box {
     max-width: 360px;
     margin: 4rem auto;
@@ -69,49 +246,18 @@ body {
     border-radius: 8px;
 }
 
-.login-box h1 {
-    margin-top: 0;
-    font-size: 1.4rem;
-}
+.login-box h1 { margin-top: 0; font-size: 1.4rem; }
 
-.login-box label {
-    display: block;
-    margin-top: 1rem;
-    margin-bottom: 0.25rem;
-    font-size: 0.9rem;
-    font-weight: 500;
-}
+.login-box .field label { font-weight: 500; }
 
-.login-box input {
-    width: 100%;
-    padding: 0.55rem 0.65rem;
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    font-size: 1rem;
-}
-
-button {
-    margin-top: 1.5rem;
-    width: 100%;
-    padding: 0.6rem;
-    background: var(--primary);
-    color: #fff;
-    border: none;
-    border-radius: 6px;
-    font-size: 1rem;
-    cursor: pointer;
-}
-
-button:hover {
-    background: var(--primary-hover);
-}
+.login-box .btn { width: 100%; justify-content: center; margin-top: 0.5rem; }
 
 .error {
-    margin: 0;
+    margin: 0 0 1rem;
     padding: 0.6rem 0.75rem;
-    background: #fef2f2;
-    border: 1px solid #fecaca;
+    background: var(--error-bg);
+    border: 1px solid var(--error-border);
     border-radius: 6px;
-    color: var(--error);
+    color: var(--error-text);
     font-size: 0.9rem;
 }

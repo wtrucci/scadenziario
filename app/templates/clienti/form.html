@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+
+{% block title %}{{ titolo }} — Scadenziario{% endblock %}
+
+{% block content %}
+<h1>{{ titolo }}</h1>
+
+{% if errori %}
+<ul class="error-list">
+    {% for e in errori %}<li>{{ e }}</li>{% endfor %}
+</ul>
+{% endif %}
+
+<form method="post" action="{{ action }}" class="form-card">
+    <div class="field">
+        <label for="nome">Nome <span class="required">*</span></label>
+        <input type="text" id="nome" name="nome" value="{{ valori.nome }}"
+               required maxlength="200" autofocus>
+    </div>
+
+    <div class="field">
+        <label for="note">Note</label>
+        <textarea id="note" name="note" rows="3">{{ valori.note }}</textarea>
+    </div>
+
+    <div class="field field-inline">
+        <input type="checkbox" id="attivo" name="attivo"
+               {% if valori.attivo %}checked{% endif %}>
+        <label for="attivo">Cliente attivo</label>
+    </div>
+
+    <div class="form-actions">
+        <button type="submit" class="btn">Salva</button>
+        <a href="/clienti" class="btn btn-secondary">Annulla</a>
+    </div>
+</form>
+{% endblock %}
