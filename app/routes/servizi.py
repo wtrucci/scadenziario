@@ -71,6 +71,7 @@ def _valori_da_servizio(s: Servizio) -> dict:
         "ricorrenza": s.ricorrenza.value,
         "preavviso_giorni": str(s.preavviso_giorni),
         "stato": s.stato.value,
+        "rinnovo_automatico": s.rinnovo_automatico,  # bool: True/False
         "referente": s.referente or "",
         "note": s.note or "",
     }
@@ -229,6 +230,7 @@ def nuovo_form(
                 "ricorrenza": Ricorrenza.annuale.value,
                 "preavviso_giorni": "30",
                 "stato": StatoServizio.attivo.value,
+                "rinnovo_automatico": False,
                 "referente": "",
                 "note": "",
             },
@@ -251,17 +253,20 @@ def crea_servizio(
     ricorrenza: str = Form(""),
     preavviso_giorni: str = Form("30"),
     stato: str = Form(""),
+    rinnovo_automatico: Optional[str] = Form(None),  # checkbox: present="on", absent=None
     referente: str = Form(""),
     note: str = Form(""),
     db: Session = Depends(get_db),
     user: Utente = Depends(require_login),
 ):
+    is_rinnovo = rinnovo_automatico is not None
     valori = _valori_da_form(
         cliente_id=cliente_id, descrizione=descrizione, tipo=tipo,
         data_scadenza=data_scadenza, importo=importo, quantita=quantita,
         valuta=valuta, ricorrenza=ricorrenza, preavviso_giorni=preavviso_giorni,
         stato=stato, referente=referente, note=note,
     )
+    valori["rinnovo_automatico"] = is_rinnovo
     errori, parsed = _valida(
         cliente_id_raw=cliente_id, descrizione=descrizione, tipo_raw=tipo,
         data_scadenza_raw=data_scadenza, importo_raw=importo, quantita_raw=quantita,
@@ -276,6 +281,7 @@ def crea_servizio(
             status_code=422,
         )
     db.add(Servizio(
+        rinnovo_automatico=is_rinnovo,
         referente=referente.strip() or None,
         note=note.strip() or None,
         **parsed,
@@ -326,18 +332,21 @@ def aggiorna_servizio(
     ricorrenza: str = Form(""),
     preavviso_giorni: str = Form("30"),
     stato: str = Form(""),
+    rinnovo_automatico: Optional[str] = Form(None),
     referente: str = Form(""),
     note: str = Form(""),
     db: Session = Depends(get_db),
     user: Utente = Depends(require_login),
 ):
     s = _get_or_404(db, servizio_id)
+    is_rinnovo = rinnovo_automatico is not None
     valori = _valori_da_form(
         cliente_id=cliente_id, descrizione=descrizione, tipo=tipo,
         data_scadenza=data_scadenza, importo=importo, quantita=quantita,
         valuta=valuta, ricorrenza=ricorrenza, preavviso_giorni=preavviso_giorni,
         stato=stato, referente=referente, note=note,
     )
+    valori["rinnovo_automatico"] = is_rinnovo
     errori, parsed = _valida(
         cliente_id_raw=cliente_id, descrizione=descrizione, tipo_raw=tipo,
         data_scadenza_raw=data_scadenza, importo_raw=importo, quantita_raw=quantita,
@@ -357,6 +366,7 @@ def aggiorna_servizio(
         )
     for field, value in parsed.items():
         setattr(s, field, value)
+    s.rinnovo_automatico = is_rinnovo
     s.referente = referente.strip() or None
     s.note = note.strip() or None
     db.commit()

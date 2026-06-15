@@ -102,6 +102,13 @@
         </div>
     </div>
 
+    {# --- Rinnovo automatico --- #}
+    <div class="field field-inline">
+        <input type="checkbox" id="rinnovo_automatico" name="rinnovo_automatico"
+               {% if valori.rinnovo_automatico %}checked{% endif %}>
+        <label for="rinnovo_automatico">Rinnovo automatico alla scadenza</label>
+    </div>
+
     {# --- Referente / Note --- #}
     <div class="field">
         <label for="referente">Referente</label>

@@ -35,14 +35,9 @@ le scelte tecniche quando non sono banali.
 - **Frontend:** template server-side Jinja2 + HTMX (NIENTE SPA, niente build
   step JavaScript, niente npm per il frontend).
 - **Scheduler notifiche:** APScheduler nel processo applicativo.
-- **Autenticazione:** login utente/password con hashing sicuro tramite la
-  libreria `bcrypt` usata **direttamente** (NON passlib, che è non mantenuto e
-  incompatibile con bcrypt >= 4.1). Sessioni firmate via SECRET_KEY. Ruoli base
-  (admin / utente). Predisporre per futura integrazione OIDC, ma NON
-  implementarla ora.
-  - Il **rehashing trasparente** delle password (re-hash al login quando il
-    cost factor cambia) NON è implementato: accettabile per pochi utenti
-    interni. Se servisse in futuro, si può aggiungere in `app/security.py`.
+- **Autenticazione:** login utente/password con hashing sicuro (bcrypt/argon2),
+  sessioni. Ruoli base (admin / utente). Predisporre per futura integrazione
+  OIDC, ma NON implementarla ora.
 
 ## Canali di notifica
 
@@ -67,6 +62,14 @@ le scelte tecniche quando non sono banali.
   - **referente**: persona/collega a cui va fatturato il servizio, quando
     diverso dal cliente finale (es. fatturo a un collega i servizi dei suoi
     clienti). Campo testuale opzionale.
+  - **rinnovo_automatico** (bool, default False): se True, alla scadenza il
+    sistema avanza automaticamente data_scadenza alla ricorrenza successiva
+    (annuale → +1 anno, mensile → +1 mese) e registra un RinnovoLog. Se False,
+    la scadenza resta fissa finché non viene modificata o rinnovata a mano.
+- **RinnovoLog**: id, servizio_id (FK), data_rinnovo (la scadenza che è stata
+  rinnovata), nuova_scadenza, importo, quantita, totale (snapshot al momento
+  del rinnovo). Serve a non perdere nessun rinnovo da fatturare e a tenere lo
+  storico economico per cliente. cascade delete con il servizio.
 - **Utente**: id, username, password_hash, ruolo, attivo.
 - **NotificaLog**: id, servizio_id (FK), canale, inviata_il, esito, dettaglio.
 
@@ -74,9 +77,23 @@ le scelte tecniche quando non sono banali.
 
 - CRUD completo clienti e servizi.
 - Dashboard con servizi raggruppati per mese di scadenza.
-- Vista "riepilogo da fatturare" per un mese selezionato: servizi in scadenza
-  raggruppati per cliente (e con possibilità di raggruppare/filtrare per
-  referente) con somma dei totali (`quantita * importo`). Esportabile (CSV).
+- Vista "riepilogo da fatturare" per un mese selezionato:
+  - Include SOLO i servizi in stato "attivo" (esclude disdetti e rinnovati).
+  - Raggruppa principalmente per cliente, con somma dei totali
+    (`quantita * importo`) per ogni cliente e totale complessivo del mese.
+  - Esportabile in CSV.
+- Avanzamento automatico scadenze (servizi con rinnovo_automatico=True):
+  - Uno scheduler periodico controlla i servizi attivi con rinnovo_automatico
+    la cui data_scadenza è raggiunta/superata.
+  - Per ognuno: registra un RinnovoLog (snapshot importo/quantita/totale e
+    scadenza rinnovata) PRIMA di spostare la data, così il rinnovo resta
+    tracciato e fatturabile, poi avanza data_scadenza alla ricorrenza
+    successiva.
+  - Deve recuperare gli avanzamenti saltati se l'app è stata spenta (avanzare
+    finché la nuova scadenza è nel futuro), generando un RinnovoLog per ogni
+    periodo saltato.
+  - I servizi con ricorrenza "una_tantum" non avanzano mai, anche se il flag
+    fosse attivo.
 - Invio notifiche automatiche secondo la soglia di preavviso.
 - Gestione utenti (solo admin).
 

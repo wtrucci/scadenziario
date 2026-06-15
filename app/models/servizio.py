@@ -35,6 +35,13 @@ class Servizio(Base):
         Enum(StatoServizio, native_enum=False, length=20), default=StatoServizio.attivo
     )
 
+    # When True, the scheduler will advance data_scadenza by one recurrence period
+    # at expiry and write a RinnovoLog entry. server_default="0" ensures existing
+    # rows get False when this column is added via ALTER TABLE migration.
+    rinnovo_automatico: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default="0"
+    )
+
     # Optional: the colleague/contact to invoice when different from the end customer.
     referente: Mapped[str | None] = mapped_column(String(200))
     note: Mapped[str | None] = mapped_column(Text)
@@ -48,6 +55,10 @@ class Servizio(Base):
 
     # cascade="all, delete-orphan": notification logs are meaningless without their service.
     notifiche: Mapped[list[NotificaLog]] = relationship(
+        back_populates="servizio", cascade="all, delete-orphan"
+    )
+    # Renewal history. Deleted together with the service (billing context gone).
+    rinnovi: Mapped[list[RinnovoLog]] = relationship(
         back_populates="servizio", cascade="all, delete-orphan"
     )
 
