@@ -155,7 +155,8 @@ class TestLogicaRiepilogo(unittest.TestCase):
                           quantita=1)
         s.override_importi.append(
             OverrideImporto(data_occorrenza=date(2026, 12, 10),
-                            importo=Decimal("99.00"), quantita=5)
+                            importo=Decimal("99.00"), quantita=5,
+                            override_manuale=True)
         )
         self.db.flush()
 

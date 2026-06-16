@@ -86,16 +86,39 @@ le scelte tecniche quando non sono banali.
   data_occorrenza, importo (nullable), quantita (nullable), fatturato (bool,
   default False), fatturato_il (nullable). Rappresenta "ciò che rende speciale
   una specifica occorrenza":
-  - importo/quantita: se valorizzati, correggono il default del servizio per
-    quella sola occorrenza (se NULL si usa il default del servizio).
+  - importo/quantita: se valorizzati, fissano il prezzo/quantità di quella
+    occorrenza (se NULL si usa il default del servizio). Possono essere
+    valorizzati per due motivi DIVERSI, distinti dal flag override_manuale:
+    - **override_manuale=True**: l'utente ha fatto una correzione deliberata
+      del prezzo/quantità di quella occorrenza (es. sconto). In dashboard
+      mostra il badge "Override".
+    - **override_manuale=False** ma importo valorizzato: è uno SNAPSHOT
+      automatico salvato al momento della fatturazione (vedi sotto). NON mostra
+      il badge "Override": è il prezzo normale, semplicemente congelato.
   - fatturato: True quando l'utente marca quell'occorrenza come fatturata;
-    fatturato_il registra quando. È uno stato PERSISTENTE per-occorrenza, e
-    poiché le occorrenze non sono righe, questa tabella è il posto dove
-    salvarlo. Marcare/smarcare "fatturato" crea o aggiorna la riga per
+    fatturato_il registra quando. Al passaggio a fatturato=True, l'app salva
+    uno SNAPSHOT del prezzo/quantità effettivi del momento (override-aware)
+    nella riga, così un futuro cambio di prezzo del servizio NON altera ciò
+    che è già stato fatturato. Allo "smarco" (fatturato=False), lo snapshot
+    viene rimosso (importo/quantita tornano NULL) SOLO se override_manuale è
+    False; se è una correzione manuale, NON va cancellata.
+  - È uno stato PERSISTENTE per-occorrenza, e poiché le occorrenze non sono
+    righe, questa tabella è il posto dove salvarlo. Marcare/smarcare o
+    correggere un'occorrenza crea o aggiorna la riga per
     (servizio_id, data_occorrenza).
+  - **note** (testo, opzionale): nota sulla riga di stato, per annotare il
+    perché di una correzione manuale (es. "sconto fedeltà").
   - cascade delete con il servizio. Vincolo di unicità su
     (servizio_id, data_occorrenza): al massimo una riga di stato per
     occorrenza.
+
+> DECISIONE sul prezzo che cambia nel tempo (aumenti): NON si usa un prezzo
+> storicizzato. Per aumentare il prezzo si modifica direttamente
+> servizio.importo: il nuovo prezzo vale per le occorrenze future E per quelle
+> passate non ancora fatturate (accettato dall'utente). Le occorrenze già
+> fatturate restano congelate grazie allo snapshot salvato nella riga di stato
+> al momento della fatturazione. Una vera storicizzazione del prezzo (listini
+> con data di decorrenza) è un possibile miglioramento futuro.
 
 - **Utente**: id, username, password_hash, ruolo, attivo.
 - **NotificaLog**: id, servizio_id (FK), canale, inviata_il, esito, dettaglio.

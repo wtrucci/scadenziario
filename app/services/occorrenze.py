@@ -28,9 +28,9 @@ class Occorrenza:
     """A single computed billable date for a service."""
 
     data_occorrenza: date
-    importo: Decimal       # effective unit price (override or service default)
-    quantita: int          # effective quantity (override or service default)
-    da_override: bool      # True only if importo/quantita are actually corrected
+    importo: Decimal       # effective unit price (override/snapshot or service default)
+    quantita: int          # effective quantity (override/snapshot or service default)
+    da_override: bool      # True only for a deliberate manual override (not a billing snapshot)
     fatturato: bool        # True if this occurrence has been marked as billed
     stato_visivo: str      # "fatturato" | "da_fatturare" | "in_scadenza" | "normale"
 
@@ -118,11 +118,12 @@ def occorrenze_nel_periodo(
             stato = stato_per_data.get(data_occ)
 
             # Price/quantity: use the state row only where it is actually set;
-            # NULL means "fall back to the service default". So a row that
-            # exists purely to carry the fatturato flag is NOT an override.
+            # NULL means "fall back to the service default". An importo may be a
+            # manual override OR an automatic billing snapshot, so it alone is
+            # not an override: the badge follows override_manuale only.
             importo = stato.importo if (stato and stato.importo is not None) else servizio.importo
             quantita = stato.quantita if (stato and stato.quantita is not None) else servizio.quantita
-            da_override = stato is not None and stato.ha_override_importo
+            da_override = bool(stato and stato.override_manuale)
             fatturato = stato.fatturato if stato is not None else False
 
             occorrenze.append(Occorrenza(

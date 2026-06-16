@@ -116,7 +116,8 @@ class TestOccorrenze(unittest.TestCase):
                       importo="10.00", quantita=1)
         s.override_importi.append(
             OverrideImporto(data_occorrenza=date(2025, 2, 10),
-                            importo=Decimal("99.00"), quantita=5)
+                            importo=Decimal("99.00"), quantita=5,
+                            override_manuale=True)
         )
         occ = occorrenze.occorrenze_nel_periodo(s, *TUTTO)
         per_data = {o.data_occorrenza: o for o in occ}
@@ -226,6 +227,31 @@ class TestStatoOccorrenza(unittest.TestCase):
         o = occorrenze.occorrenze_nel_periodo(s, *TUTTO, oggi=date(2025, 6, 1))[0]
         self.assertFalse(o.fatturato)
         self.assertEqual(o.stato_visivo, "da_fatturare")
+
+    # The "Override" badge (da_override) must reflect ONLY a deliberate manual
+    # override, not a plain billing snapshot (override_manuale=False with a
+    # frozen importo).
+    def test_badge_override_solo_se_manuale(self):
+        s = _servizio(date(2025, 1, 10), date(2025, 2, 10), cadenza_mesi=1,
+                      importo="10.00", quantita=1)
+        # January: a billing snapshot (importo set, override_manuale False).
+        s.override_importi.append(
+            OverrideImporto(data_occorrenza=date(2025, 1, 10),
+                            importo=Decimal("10.00"), quantita=1,
+                            override_manuale=False, fatturato=True)
+        )
+        # February: a deliberate manual override.
+        s.override_importi.append(
+            OverrideImporto(data_occorrenza=date(2025, 2, 10),
+                            importo=Decimal("8.00"), quantita=1,
+                            override_manuale=True)
+        )
+        per_data = {
+            o.data_occorrenza: o
+            for o in occorrenze.occorrenze_nel_periodo(s, *TUTTO, oggi=date(2025, 1, 1))
+        }
+        self.assertFalse(per_data[date(2025, 1, 10)].da_override)  # snapshot -> no badge
+        self.assertTrue(per_data[date(2025, 2, 10)].da_override)   # manual -> badge
 
     # Full visual-state precedence on a single monthly service (preavviso 30d).
     def test_stato_visivo_precedenza(self):

@@ -451,16 +451,23 @@ def toggle_fatturato(
     Toggle the "fatturato" flag for one occurrence (HTMX).
 
     Occurrences are not stored, so the flag lives on a per-occurrence state row
-    (OverrideImporto). This creates the row if missing, or updates it, leaving
-    any price/quantity correction untouched. We accept the date only if it is a
-    real occurrence of the service, to avoid creating state rows on bogus dates.
+    (OverrideImporto). We accept the date only if it is a real occurrence of the
+    service, to avoid creating state rows on bogus dates.
+
+    Billing freezes the price: on fatturato=True we snapshot the current
+    effective price/quantity (override-aware) into the row, so a later change to
+    the service price does not alter what was already billed. On un-billing we
+    clear that snapshot ONLY if it was not a deliberate manual override.
     Returns the refreshed toggle button partial.
     """
     s = _get_or_404(db, servizio_id)
 
-    # Guard: the date must be an actual occurrence of this service.
-    if not occorrenze_nel_periodo(s, data_occorrenza, data_occorrenza):
+    # Guard: the date must be an actual occurrence of this service. Reuse the
+    # computed occurrence as the source of the effective price/quantity.
+    occorrenze = occorrenze_nel_periodo(s, data_occorrenza, data_occorrenza)
+    if not occorrenze:
         raise HTTPException(status_code=404, detail="Occorrenza non trovata")
+    occ = occorrenze[0]
 
     stato = db.scalars(
         select(OverrideImporto)
@@ -473,9 +480,20 @@ def toggle_fatturato(
         stato = OverrideImporto(servizio_id=servizio_id, data_occorrenza=data_occorrenza)
         db.add(stato)
 
-    # Flip the flag; record/clear the timestamp accordingly.
     stato.fatturato = not stato.fatturato
-    stato.fatturato_il = utcnow() if stato.fatturato else None
+    if stato.fatturato:
+        # Billing ON: freeze the effective price/quantity at this moment.
+        stato.importo = occ.importo
+        stato.quantita = occ.quantita
+        stato.fatturato_il = utcnow()
+    else:
+        # Billing OFF (undo): drop the timestamp, and clear the snapshot so the
+        # occurrence tracks the service price again — but only if this is not a
+        # deliberate manual override, which must be preserved.
+        stato.fatturato_il = None
+        if not stato.override_manuale:
+            stato.importo = None
+            stato.quantita = None
     db.commit()
 
     return templates.TemplateResponse(
