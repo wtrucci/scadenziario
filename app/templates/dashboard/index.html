@@ -8,56 +8,48 @@
     <a class="btn btn-secondary" href="/riepilogo?mese={{ nav.chiave }}">Riepilogo da fatturare →</a>
 </div>
 
-{% with base_url = "/" %}
-{% include "partials/_navigazione_mese.html" %}
-{% endwith %}
+{# Filter form. Changing any control issues an HTMX GET that swaps only the
+   results region and pushes the URL (so it stays bookmarkable). The hidden
+   "mese" keeps the selected month when filtering. Controls are pre-populated
+   from the current filter values, so a bookmarked filtered URL shows the right
+   state. #}
+<form class="filtri" hx-get="/" hx-target="#risultati" hx-push-url="true" hx-trigger="change">
+    <input type="hidden" name="mese" value="{{ nav.chiave }}">
+    <div class="field">
+        <label for="f-cliente">Cliente</label>
+        <select id="f-cliente" name="cliente">
+            <option value="">Tutti</option>
+            {% for c in clienti %}
+            <option value="{{ c.id }}" {% if filtri.cliente == c.id %}selected{% endif %}>{{ c.nome }}</option>
+            {% endfor %}
+        </select>
+    </div>
+    <div class="field">
+        <label for="f-referente">Referente</label>
+        <select id="f-referente" name="referente">
+            <option value="">Tutti</option>
+            {% for r in referenti %}
+            <option value="{{ r }}" {% if filtri.referente == r %}selected{% endif %}>{{ r }}</option>
+            {% endfor %}
+        </select>
+    </div>
+    <div class="field">
+        <label for="f-stato">Stato occorrenza</label>
+        <select id="f-stato" name="stato">
+            <option value="">Tutti</option>
+            {% for st in stati_occorrenza %}
+            <option value="{{ st }}" {% if filtri.stato == st %}selected{% endif %}>
+                {{ {"da_fatturare": "Da fatturare", "in_scadenza": "In scadenza", "fatturato": "Fatturato"}[st] }}
+            </option>
+            {% endfor %}
+        </select>
+    </div>
+    {% if filtri.cliente or filtri.referente or filtri.stato %}
+    <a class="btn btn-secondary filtri-reset" href="/?mese={{ nav.chiave }}">Azzera filtri</a>
+    {% endif %}
+</form>
 
-<h2 class="month-heading">{{ nav.etichetta }}</h2>
-
-{% if righe %}
-<table class="table-servizi">
-    <thead>
-        <tr>
-            <th>Cliente</th>
-            <th>Descrizione</th>
-            <th>Scadenza</th>
-            <th class="col-num">Qtà</th>
-            <th class="col-num">Importo unit.</th>
-            <th class="col-num">Totale</th>
-            <th>Stato</th>
-        </tr>
-    </thead>
-    <tbody>
-        {% for riga, cls in righe %}
-        {% set s = riga.servizio %}
-        {% set occ = riga.occorrenza %}
-        <tr class="{{ cls }}">
-            <td>{{ s.cliente.nome }}</td>
-            <td>{{ s.descrizione }}</td>
-            <td class="col-data">
-                {{ occ.data_occorrenza.strftime('%d/%m/%Y') }}
-                {% if cls == 'row-passata' %}
-                <span class="badge badge-off">Passata</span>
-                {% elif cls == 'row-in-scadenza' %}
-                <span class="badge badge-warn">In scadenza</span>
-                {% endif %}
-                {% if occ.da_override %}
-                <span class="badge badge-tipo" title="Importo/quantità personalizzati per questa occorrenza">Override</span>
-                {% endif %}
-            </td>
-            <td class="col-num">{{ occ.quantita }}</td>
-            <td class="col-num">{{ "%.2f"|format(occ.importo) }} {{ s.valuta }}</td>
-            <td class="col-num"><strong>{{ "%.2f"|format(occ.totale) }} {{ s.valuta }}</strong></td>
-            <td><span class="badge badge-stato-{{ s.stato.value }}">{{ s.stato.value }}</span></td>
-        </tr>
-        {% endfor %}
-    </tbody>
-</table>
-<p class="table-legend">
-    <span class="legend-dot legend-passata"></span> Passata &nbsp;
-    <span class="legend-dot legend-in-scadenza"></span> In scadenza entro il preavviso
-</p>
-{% else %}
-<p class="muted">Nessuna scadenza in {{ nav.etichetta }}.</p>
-{% endif %}
+<div id="risultati">
+    {% include "dashboard/_risultati.html" %}
+</div>
 {% endblock %}

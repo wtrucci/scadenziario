@@ -1,0 +1,66 @@
+{# Results region swapped by HTMX on filter changes; also included by the full
+   page. Contains the month navigation (so its links pick up the active filters
+   after a swap), the heading and the occurrences table.
+   Context: nav, filtri_qs, righe (list of RigaOccorrenza). #}
+{% with base_url = "/" %}
+{% include "partials/_navigazione_mese.html" %}
+{% endwith %}
+
+<h2 class="month-heading">{{ nav.etichetta }}</h2>
+
+{% if righe %}
+<table class="table-servizi">
+    <thead>
+        <tr>
+            <th>Cliente</th>
+            <th>Descrizione</th>
+            <th>Scadenza</th>
+            <th class="col-num">Qtà</th>
+            <th class="col-num">Importo unit.</th>
+            <th class="col-num">Totale</th>
+            <th>Stato servizio</th>
+            <th>Fatturazione</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for riga in righe %}
+        {% set s = riga.servizio %}
+        {% set occ = riga.occorrenza %}
+        {% set rowcls = {"da_fatturare": "row-da-fatturare", "in_scadenza": "row-in-scadenza", "fatturato": "row-fatturato"}.get(occ.stato_visivo, "") %}
+        <tr class="{{ rowcls }}">
+            <td>{{ s.cliente.nome }}</td>
+            <td>{{ s.descrizione }}</td>
+            <td class="col-data">
+                {{ occ.data_occorrenza.strftime('%d/%m/%Y') }}
+                {% if occ.stato_visivo == 'da_fatturare' %}
+                <span class="badge badge-da-fatturare">Da fatturare</span>
+                {% elif occ.stato_visivo == 'in_scadenza' %}
+                <span class="badge badge-warn">In scadenza</span>
+                {% elif occ.stato_visivo == 'fatturato' %}
+                <span class="badge badge-fatturato">Fatturato</span>
+                {% endif %}
+                {% if occ.da_override %}
+                <span class="badge badge-tipo" title="Importo/quantità personalizzati per questa occorrenza">Override</span>
+                {% endif %}
+            </td>
+            <td class="col-num">{{ occ.quantita }}</td>
+            <td class="col-num">{{ "%.2f"|format(occ.importo) }} {{ s.valuta }}</td>
+            <td class="col-num"><strong>{{ "%.2f"|format(occ.totale) }} {{ s.valuta }}</strong></td>
+            <td><span class="badge badge-stato-{{ s.stato.value }}">{{ s.stato.value }}</span></td>
+            <td>
+                {% with servizio_id = s.id, data_occorrenza = occ.data_occorrenza, fatturato = occ.fatturato %}
+                {% include "servizi/_toggle_fatturato.html" %}
+                {% endwith %}
+            </td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+<p class="table-legend">
+    <span class="legend-dot legend-da-fatturare"></span> Da fatturare (scaduta non fatturata) &nbsp;
+    <span class="legend-dot legend-in-scadenza"></span> In scadenza entro il preavviso &nbsp;
+    <span class="legend-dot legend-fatturato"></span> Fatturato
+</p>
+{% else %}
+<p class="muted">Nessuna scadenza in {{ nav.etichetta }}{% if filtri.cliente or filtri.referente or filtri.stato %} con i filtri attivi{% endif %}.</p>
+{% endif %}

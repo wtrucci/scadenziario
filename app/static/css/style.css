@@ -240,13 +240,22 @@ tr.row-scaduta { background: #fef2f2 !important; }
 tr.row-scaduta:hover { background: #fee2e2 !important; }
 tr.row-in-scadenza { background: #fffbeb !important; }
 tr.row-in-scadenza:hover { background: #fef3c7 !important; }
-/* Past occurrences: shown but visually de-emphasised. */
-tr.row-passata { background: #f9fafb !important; color: var(--muted); }
-tr.row-passata:hover { background: #f3f4f6 !important; }
+/* Occurrence visual states (dashboard).
+   "Da fatturare" = past and not billed: an ALERT, deliberately prominent (NOT
+   muted) with a red accent, because it's what must not be forgotten. */
+tr.row-da-fatturare { background: #fef2f2 !important; box-shadow: inset 3px 0 0 var(--danger); }
+tr.row-da-fatturare:hover { background: #fee2e2 !important; }
+/* "Fatturato" = done: neutral/green and de-emphasised. */
+tr.row-fatturato { background: #f0fdf4 !important; color: var(--muted); }
+tr.row-fatturato:hover { background: #dcfce7 !important; }
 
 /* ------------------------------------------------------------------ Badges */
 
 .badge-warn { background: #fef3c7; color: #92400e; }
+
+/* Occurrence-state badges */
+.badge-da-fatturare { background: #fee2e2; color: #991b1b; }
+.badge-fatturato    { background: var(--ok-bg); color: var(--ok-text); }
 
 /* Tipo badges */
 .badge-tipo { background: #eff6ff; color: #1e40af; }
@@ -262,7 +271,8 @@ tr.row-passata:hover { background: #f3f4f6 !important; }
 .legend-dot { display: inline-block; width: 10px; height: 10px; border-radius: 2px; }
 .legend-scaduta    { background: #fecaca; }
 .legend-in-scadenza { background: #fde68a; }
-.legend-passata    { background: #e5e7eb; }
+.legend-da-fatturare { background: #fecaca; }
+.legend-fatturato  { background: #bbf7d0; }
 
 /* Numeric columns (qty, price, total) — right-aligned */
 .col-num { text-align: right; white-space: nowrap; }
@@ -368,3 +378,25 @@ tr.row-passata:hover { background: #f3f4f6 !important; }
     text-align: right;
     font-size: 1.1rem;
 }
+
+/* ------------------------------------------------------------------ Filters */
+
+/* A row of compact filter controls above a list. */
+.filtri {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    gap: 1rem;
+    margin-bottom: 1.25rem;
+    padding: 1rem;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+}
+
+.filtri .field { margin-bottom: 0; min-width: 180px; }
+.filtri-reset { margin-left: auto; }
+
+/* "Fatturato" toggle button (per-occurrence, HTMX). */
+.fatturato-off { color: var(--danger); font-weight: 600; }
+.fatturato-on  { color: var(--ok-text); font-weight: 600; }

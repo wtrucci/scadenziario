@@ -1,0 +1,34 @@
+{# Results region swapped by HTMX on filter changes; also included by the full
+   page. Context: righe (list of (Servizio, cadenza label)), filtri. #}
+{% if righe %}
+<table class="table-servizi">
+    <thead>
+        <tr>
+            <th>Cliente</th>
+            <th>Descrizione</th>
+            <th>Tipo</th>
+            <th>Periodo</th>
+            <th>Cadenza</th>
+            <th>Referente</th>
+            <th class="col-num">Qtà</th>
+            <th class="col-num">Importo unit.</th>
+            <th class="col-num">Totale</th>
+            <th>Stato</th>
+            <th>Azioni</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for s, cadenza in righe %}
+        {% include "servizi/_riga.html" %}
+        {% endfor %}
+    </tbody>
+</table>
+{% else %}
+<p class="muted">
+    {% if filtri.cliente or filtri.referente or filtri.stato %}
+    Nessun servizio corrisponde ai filtri attivi.
+    {% else %}
+    Nessun servizio presente. <a href="/servizi/nuovo">Crea il primo</a>.
+    {% endif %}
+</p>
+{% endif %}

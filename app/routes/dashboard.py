@@ -15,6 +15,7 @@ import csv
 import io
 from datetime import date
 from decimal import Decimal
+from urllib.parse import urlencode
 
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import Response
@@ -23,11 +24,31 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.dependencies import require_login
 from app.models.utente import Utente
-from app.services import periodi, riepilogo
-from app.services.scadenze import classe_occorrenza
+from app.services import filtri, periodi, riepilogo
 from app.templating import templates
 
 router = APIRouter()
+
+# The per-occurrence visual states the dashboard lets you filter by. "normale"
+# is intentionally not offered (it just means "nothing special").
+STATI_OCCORRENZA_FILTRABILI = ("da_fatturare", "in_scadenza", "fatturato")
+
+
+def _filtri_querystring(cliente_id: int | None, referente: str | None, stato: str | None) -> str:
+    """Encode the active filters (excluding ``mese``) as a querystring fragment.
+
+    Returns "" when no filter is active, or "&key=value..." otherwise, so it can
+    be appended after ``?mese=...`` in the month-navigation links (this is how
+    filters are preserved while moving between months).
+    """
+    attivi = {}
+    if cliente_id is not None:
+        attivi["cliente"] = cliente_id
+    if referente:
+        attivi["referente"] = referente
+    if stato:
+        attivi["stato"] = stato
+    return ("&" + urlencode(attivi)) if attivi else ""
 
 
 def _navigazione_mese(primo: date) -> dict:
@@ -52,21 +73,53 @@ def _decimale_it(valore: Decimal) -> str:
 def dashboard(
     request: Request,
     mese: str | None = None,
+    cliente: str | None = None,
+    referente: str | None = None,
+    stato: str | None = None,
     db: Session = Depends(get_db),
     user: Utente = Depends(require_login),
 ):
     primo = periodi.parse_mese(mese)
-    oggi = date.today()
-    righe = [
-        (riga, classe_occorrenza(riga.occorrenza.data_occorrenza,
-                                 riga.servizio.preavviso_giorni, oggi))
-        for riga in riepilogo.occorrenze_del_mese(db, primo)
-    ]
-    return templates.TemplateResponse(
-        request,
-        "dashboard/index.html",
-        {"user": user, "nav": _navigazione_mese(primo), "righe": righe},
+
+    # Normalise the raw query params into typed/validated filter values.
+    cliente_id = int(cliente) if (cliente and cliente.isdigit()) else None
+    referente_val = referente.strip() if referente and referente.strip() else None
+    stato_val = stato if stato in STATI_OCCORRENZA_FILTRABILI else None
+
+    # cliente/referente are SQL filters (service columns); the visual state is
+    # filtered in Python because it is computed by the engine, not a column.
+    righe = riepilogo.occorrenze_del_mese(
+        db, primo, cliente_id=cliente_id, referente=referente_val
     )
+    righe = riepilogo.filtra_per_stato_visivo(righe, stato_val)
+
+    contesto = {
+        "user": user,
+        "nav": _navigazione_mese(primo),
+        "righe": righe,
+        # Querystring of active filters, appended to the month-nav links so they
+        # are preserved when navigating between months.
+        "filtri_qs": _filtri_querystring(cliente_id, referente_val, stato_val),
+        # Current filter values, to pre-populate the form (e.g. on a bookmarked URL).
+        "filtri": {
+            "cliente": cliente_id,
+            "referente": referente_val or "",
+            "stato": stato_val or "",
+        },
+        "clienti": filtri.clienti_disponibili(db),
+        "referenti": filtri.referenti_disponibili(db),
+        "stati_occorrenza": STATI_OCCORRENZA_FILTRABILI,
+    }
+
+    # HTMX request (filter change): swap only the results region. A normal page
+    # load or a bookmarked URL gets the whole page, with filters already applied
+    # and the form pre-populated from the querystring.
+    template = (
+        "dashboard/_risultati.html"
+        if request.headers.get("HX-Request")
+        else "dashboard/index.html"
+    )
+    return templates.TemplateResponse(request, template, contesto)
 
 
 @router.get("/riepilogo")

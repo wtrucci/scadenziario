@@ -43,7 +43,12 @@ class RigaOccorrenza:
 
 
 def occorrenze_del_mese(
-    db: Session, primo: date, *, solo_attivi: bool = False
+    db: Session,
+    primo: date,
+    *,
+    solo_attivi: bool = False,
+    cliente_id: int | None = None,
+    referente: str | None = None,
 ) -> list[RigaOccorrenza]:
     """All occurrences falling within the month starting at ``primo``.
 
@@ -51,6 +56,10 @@ def occorrenze_del_mese(
     overlaps the month; the occurrence engine then produces the exact dates.
     When ``solo_attivi`` is True only services in state ``attivo`` are considered
     (used by the billing summary, which excludes disdetti and rinnovati).
+
+    ``cliente_id`` and ``referente`` are optional SQL filters on service columns.
+    The per-occurrence visual state is NOT filtered here (it is computed, not a
+    column): use ``filtra_per_stato_visivo`` on the result for that.
     """
     inizio = primo
     fine = ultimo_giorno_mese(primo)
@@ -69,6 +78,10 @@ def occorrenze_del_mese(
     )
     if solo_attivi:
         query = query.where(Servizio.stato == StatoServizio.attivo)
+    if cliente_id is not None:
+        query = query.where(Servizio.cliente_id == cliente_id)
+    if referente:
+        query = query.where(Servizio.referente == referente)
 
     righe: list[RigaOccorrenza] = []
     for servizio in db.scalars(query):
@@ -78,6 +91,20 @@ def occorrenze_del_mese(
     # Chronological within the month, then by customer name for a stable order.
     righe.sort(key=lambda r: (r.occorrenza.data_occorrenza, r.servizio.cliente.nome.lower()))
     return righe
+
+
+def filtra_per_stato_visivo(
+    righe: list[RigaOccorrenza], stato_visivo: str | None
+) -> list[RigaOccorrenza]:
+    """Keep only the rows whose occurrence has the given visual state.
+
+    The visual state ("fatturato"/"da_fatturare"/"in_scadenza"/"normale") is
+    computed by the occurrence engine, so it cannot be filtered in SQL. When
+    ``stato_visivo`` is falsy the rows are returned unchanged.
+    """
+    if not stato_visivo:
+        return righe
+    return [r for r in righe if r.occorrenza.stato_visivo == stato_visivo]
 
 
 @dataclass

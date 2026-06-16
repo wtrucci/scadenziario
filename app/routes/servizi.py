@@ -16,7 +16,7 @@ from fastapi import APIRouter, Depends, Form, Request
 from fastapi.exceptions import HTTPException
 from fastapi.responses import RedirectResponse, Response
 from sqlalchemy import select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from app.database import get_db, utcnow
 from app.dependencies import require_login
@@ -25,6 +25,7 @@ from app.models.enums import StatoServizio, TipoServizio
 from app.models.override_importo import OverrideImporto
 from app.models.servizio import Servizio
 from app.models.utente import Utente
+from app.services import filtri
 from app.services.occorrenze import occorrenze_nel_periodo
 from app.services.periodi import etichetta_cadenza
 from app.templating import templates
@@ -207,15 +208,60 @@ def _valida(
 @router.get("")
 def lista_servizi(
     request: Request,
+    cliente: str | None = None,
+    referente: str | None = None,
+    stato: str | None = None,
     db: Session = Depends(get_db),
     user: Utente = Depends(require_login),
 ):
-    servizi = db.scalars(select(Servizio).order_by(Servizio.data_inizio)).all()
+    # Normalise the raw query params into typed/validated filter values.
+    cliente_id = int(cliente) if (cliente and cliente.isdigit()) else None
+    referente_val = referente.strip() if referente and referente.strip() else None
+    try:
+        stato_val = StatoServizio(stato) if stato else None
+    except ValueError:
+        stato_val = None
+
+    # All three filters are SQL conditions on service columns (combinable).
+    query = (
+        select(Servizio)
+        .options(joinedload(Servizio.cliente))
+        .order_by(Servizio.data_inizio)
+    )
+    if cliente_id is not None:
+        query = query.where(Servizio.cliente_id == cliente_id)
+    if referente_val:
+        query = query.where(Servizio.referente == referente_val)
+    if stato_val is not None:
+        query = query.where(Servizio.stato == stato_val)
+
+    servizi = db.scalars(query).all()
     # Each row carries a human-readable cadence label (mensile/trimestrale/...).
     righe = [(s, etichetta_cadenza(s.cadenza_mesi)) for s in servizi]
-    return templates.TemplateResponse(
-        request, "servizi/lista.html", {"user": user, "righe": righe}
+
+    contesto = {
+        "user": user,
+        "righe": righe,
+        # Current filter values, to pre-populate the form (e.g. on a bookmarked URL).
+        "filtri": {
+            "cliente": cliente_id,
+            "referente": referente_val or "",
+            "stato": stato_val.value if stato_val else "",
+        },
+        "clienti": filtri.clienti_disponibili(db),
+        "referenti": filtri.referenti_disponibili(db),
+        "stati": list(StatoServizio),
+    }
+
+    # HTMX request (filter change): swap only the results region. A normal page
+    # load or a bookmarked URL gets the whole page, with filters already applied
+    # and the form pre-populated from the querystring.
+    template = (
+        "servizi/_risultati.html"
+        if request.headers.get("HX-Request")
+        else "servizi/lista.html"
     )
+    return templates.TemplateResponse(request, template, contesto)
 
 
 @router.get("/nuovo")
