@@ -58,6 +58,27 @@ l'utente admin definito in `.env` (`FIRST_ADMIN_USERNAME` /
 `FIRST_ADMIN_PASSWORD`). Il database SQLite persiste nel volume Docker
 `scadenziario-data` tra un riavvio e l'altro del container.
 
+### Immagine già pronta (GitHub Container Registry)
+
+Ad ogni push su `master` e ad ogni tag di versione (`vX.Y.Z`), un workflow
+GitHub Actions (`.github/workflows/docker-publish.yml`) builda l'immagine e
+la pubblica su GitHub Container Registry — non serve un account Docker Hub.
+Per usarla senza clonare il repository:
+
+```bash
+docker pull ghcr.io/wtrucci/scadenziario:latest
+```
+
+Va poi eseguita passando le stesse variabili d'ambiente di `.env.example`
+(es. `docker run --env-file .env -p 8000:8000 -v scadenziario-data:/app/data
+ghcr.io/wtrucci/scadenziario:latest`), oppure sostituendo `build: .` con
+`image: ghcr.io/wtrucci/scadenziario:latest` in `docker-compose.yml`.
+
+> Nota: la prima volta che il workflow pubblica un'immagine, il pacchetto su
+> GitHub va reso pubblico manualmente (Package → Package settings →
+> Change visibility), altrimenti richiede autenticazione anche solo per il
+> download.
+
 ## Avvio in locale (sviluppo, senza Docker)
 
 Richiede Python 3.12+.
