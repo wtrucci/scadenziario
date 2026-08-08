@@ -33,3 +33,16 @@ def referenti_disponibili(db: Session) -> list[str]:
         .order_by(Servizio.referente)
     ).all()
     return list(righe)
+
+
+def descrizioni_disponibili(db: Session) -> list[str]:
+    """Distinct descrizione values already used, ordered alphabetically.
+
+    Used to power the autocomplete suggestions on the service form.
+    """
+    righe = db.scalars(
+        select(Servizio.descrizione)
+        .distinct()
+        .order_by(Servizio.descrizione)
+    ).all()
+    return list(righe)

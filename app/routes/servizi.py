@@ -60,6 +60,8 @@ def _form_choices(db: Session) -> dict:
     return {
         "clienti_attivi": _clienti_attivi(db),
         "tipi_servizio": list(TipoServizio),
+        "referenti_esistenti": filtri.referenti_disponibili(db),
+        "descrizioni_esistenti": filtri.descrizioni_disponibili(db),
     }
 
 

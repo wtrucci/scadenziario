@@ -32,7 +32,13 @@
     <div class="field">
         <label for="descrizione">Descrizione <span class="required">*</span></label>
         <input type="text" id="descrizione" name="descrizione"
-               value="{{ valori.descrizione }}" maxlength="300" required autofocus>
+               value="{{ valori.descrizione }}" maxlength="300" required autofocus
+               list="descrizioni-list" autocomplete="off">
+        <datalist id="descrizioni-list">
+            {% for d in descrizioni_esistenti %}
+            <option value="{{ d }}">
+            {% endfor %}
+        </datalist>
     </div>
 
     {# --- Tipo --- #}
@@ -124,7 +130,13 @@
         <label for="referente">Referente</label>
         <input type="text" id="referente" name="referente"
                value="{{ valori.referente }}" maxlength="200"
-               placeholder="Referenza cliente finale (opzionale)">
+               placeholder="Referenza cliente finale (opzionale)"
+               list="referenti-list" autocomplete="off">
+        <datalist id="referenti-list">
+            {% for r in referenti_esistenti %}
+            <option value="{{ r }}">
+            {% endfor %}
+        </datalist>
     </div>
     <div class="field">
         <label for="note">Note</label>
