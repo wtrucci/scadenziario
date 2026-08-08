@@ -21,12 +21,19 @@ from sqlalchemy.orm import Session, joinedload
 from app.database import get_db, utcnow
 from app.dependencies import require_login
 from app.models.cliente import Cliente
-from app.models.enums import StatoServizio, TipoServizio
+from app.models.enums import TipoServizio
 from app.models.override_importo import OverrideImporto
 from app.models.servizio import Servizio
 from app.models.utente import Utente
 from app.services import filtri
-from app.services.occorrenze import occorrenze_nel_periodo
+from app.services.occorrenze import (
+    ETICHETTE_STATO_CONTRATTO,
+    STATI_CONTRATTO,
+    calcola_data_fine,
+    data_fine_effettiva,
+    occorrenze_nel_periodo,
+    stato_contratto,
+)
 from app.services.periodi import etichetta_cadenza
 from app.templating import templates
 
@@ -53,7 +60,6 @@ def _form_choices(db: Session) -> dict:
     return {
         "clienti_attivi": _clienti_attivi(db),
         "tipi_servizio": list(TipoServizio),
-        "stati": list(StatoServizio),
     }
 
 
@@ -63,13 +69,14 @@ def _valori_da_servizio(s: Servizio) -> dict:
         "descrizione": s.descrizione,
         "tipo": s.tipo.value,
         "data_inizio": s.data_inizio.isoformat(),
-        "data_fine": s.data_fine.isoformat(),
+        "durata_mesi": str(s.durata_mesi) if s.durata_mesi is not None else "",
+        "rinnovo_automatico": s.rinnovo_automatico,
         "cadenza_mesi": str(s.cadenza_mesi),
         "importo": str(s.importo),
         "quantita": str(s.quantita),
         "valuta": s.valuta,
         "preavviso_giorni": str(s.preavviso_giorni),
-        "stato": s.stato.value,
+        "disdetto": s.disdetto,
         "referente": s.referente or "",
         "note": s.note or "",
     }
@@ -86,13 +93,12 @@ def _valida(
     descrizione: str,
     tipo_raw: str,
     data_inizio_raw: str,
-    data_fine_raw: str,
+    durata_mesi_raw: str,
     cadenza_mesi_raw: str,
     importo_raw: str,
     quantita_raw: str,
     valuta: str,
     preavviso_giorni_raw: str,
-    stato_raw: str,
     db: Session,
 ) -> tuple[list[str], dict]:
     """
@@ -129,21 +135,26 @@ def _valida(
     except ValueError:
         errori.append("Seleziona un tipo valido.")
 
-    # data_inizio / data_fine
-    data_inizio = data_fine = None
+    # data_inizio
+    data_inizio = None
     try:
         data_inizio = date.fromisoformat(data_inizio_raw)
         parsed["data_inizio"] = data_inizio
     except (ValueError, TypeError):
         errori.append("Inserisci una data di inizio valida.")
+
+    # durata_mesi — data_fine is derived from it (data_inizio + durata_mesi),
+    # never entered directly (see Servizio docstring).
     try:
-        data_fine = date.fromisoformat(data_fine_raw)
-        parsed["data_fine"] = data_fine
+        durata_mesi = int(durata_mesi_raw)
+        if durata_mesi < 1:
+            errori.append("La durata del contratto deve essere di almeno 1 mese.")
+        else:
+            parsed["durata_mesi"] = durata_mesi
+            if data_inizio is not None:
+                parsed["data_fine"] = calcola_data_fine(data_inizio, durata_mesi)
     except (ValueError, TypeError):
-        errori.append("Inserisci una data di fine valida.")
-    # Cross-field check: the contract cannot end before it starts.
-    if data_inizio is not None and data_fine is not None and data_fine < data_inizio:
-        errori.append("La data di fine non può essere precedente alla data di inizio.")
+        errori.append("Durata contratto non valida: inserisci un numero intero di mesi (es. 12).")
 
     # cadenza_mesi
     try:
@@ -192,12 +203,6 @@ def _valida(
     except (ValueError, TypeError):
         errori.append("Preavviso non valido: inserisci un numero intero.")
 
-    # stato
-    try:
-        parsed["stato"] = StatoServizio(stato_raw)
-    except ValueError:
-        errori.append("Seleziona uno stato valido.")
-
     return errori, parsed
 
 
@@ -217,12 +222,12 @@ def lista_servizi(
     # Normalise the raw query params into typed/validated filter values.
     cliente_id = int(cliente) if (cliente and cliente.isdigit()) else None
     referente_val = referente.strip() if referente and referente.strip() else None
-    try:
-        stato_val = StatoServizio(stato) if stato else None
-    except ValueError:
-        stato_val = None
+    stato_val = stato if stato in STATI_CONTRATTO else None
 
-    # All three filters are SQL conditions on service columns (combinable).
+    # cliente/referente are SQL conditions on service columns; the contract
+    # state is NOT a column (only disdetto is — see stato_contratto), so it is
+    # filtered in Python after computing it per row, same pattern as the
+    # dashboard's occurrence-level state filter.
     query = (
         select(Servizio)
         .options(joinedload(Servizio.cliente))
@@ -232,12 +237,20 @@ def lista_servizi(
         query = query.where(Servizio.cliente_id == cliente_id)
     if referente_val:
         query = query.where(Servizio.referente == referente_val)
-    if stato_val is not None:
-        query = query.where(Servizio.stato == stato_val)
 
     servizi = db.scalars(query).all()
-    # Each row carries a human-readable cadence label (mensile/trimestrale/...).
-    righe = [(s, etichetta_cadenza(s.cadenza_mesi)) for s in servizi]
+    oggi = date.today()
+    # Each row carries a human-readable cadence label (mensile/trimestrale/...),
+    # the EFFECTIVE end date (so an auto-renewing contract shows its current,
+    # rolled-forward period instead of the originally stored one), and the
+    # computed contract state.
+    righe = [
+        (s, etichetta_cadenza(s.cadenza_mesi), data_fine_effettiva(s, riferimento=oggi),
+         stato_contratto(s, oggi=oggi))
+        for s in servizi
+    ]
+    if stato_val is not None:
+        righe = [r for r in righe if r[3] == stato_val]
 
     contesto = {
         "user": user,
@@ -246,11 +259,12 @@ def lista_servizi(
         "filtri": {
             "cliente": cliente_id,
             "referente": referente_val or "",
-            "stato": stato_val.value if stato_val else "",
+            "stato": stato_val or "",
         },
         "clienti": filtri.clienti_disponibili(db),
         "referenti": filtri.referenti_disponibili(db),
-        "stati": list(StatoServizio),
+        "stati": STATI_CONTRATTO,
+        "etichette_stato": ETICHETTE_STATO_CONTRATTO,
     }
 
     # HTMX request (filter change): swap only the results region. A normal page
@@ -282,13 +296,14 @@ def nuovo_form(
                 "descrizione": "",
                 "tipo": TipoServizio.abbonamento.value,
                 "data_inizio": "",
-                "data_fine": "",
+                "durata_mesi": "12",
+                "rinnovo_automatico": False,
                 "cadenza_mesi": "12",
                 "importo": "",
                 "quantita": "1",
                 "valuta": "EUR",
                 "preavviso_giorni": "30",
-                "stato": StatoServizio.attivo.value,
+                "disdetto": False,
                 "referente": "",
                 "note": "",
             },
@@ -305,30 +320,35 @@ def crea_servizio(
     descrizione: str = Form(""),
     tipo: str = Form(""),
     data_inizio: str = Form(""),
-    data_fine: str = Form(""),
+    durata_mesi: str = Form(""),
+    rinnovo_automatico: str | None = Form(None),  # checkbox: present when checked
     cadenza_mesi: str = Form(""),
     importo: str = Form(""),
     quantita: str = Form("1"),
     valuta: str = Form("EUR"),
     preavviso_giorni: str = Form("30"),
-    stato: str = Form(""),
+    disdetto: str | None = Form(None),  # checkbox: present when checked
     referente: str = Form(""),
     note: str = Form(""),
     db: Session = Depends(get_db),
     user: Utente = Depends(require_login),
 ):
+    is_rinnovo = rinnovo_automatico is not None
+    is_disdetto = disdetto is not None
     valori = _valori_da_form(
         cliente_id=cliente_id, descrizione=descrizione, tipo=tipo,
-        data_inizio=data_inizio, data_fine=data_fine, cadenza_mesi=cadenza_mesi,
+        data_inizio=data_inizio, durata_mesi=durata_mesi, cadenza_mesi=cadenza_mesi,
         importo=importo, quantita=quantita, valuta=valuta,
-        preavviso_giorni=preavviso_giorni, stato=stato,
+        preavviso_giorni=preavviso_giorni,
         referente=referente, note=note,
     )
+    valori["rinnovo_automatico"] = is_rinnovo
+    valori["disdetto"] = is_disdetto
     errori, parsed = _valida(
         cliente_id_raw=cliente_id, descrizione=descrizione, tipo_raw=tipo,
-        data_inizio_raw=data_inizio, data_fine_raw=data_fine, cadenza_mesi_raw=cadenza_mesi,
+        data_inizio_raw=data_inizio, durata_mesi_raw=durata_mesi, cadenza_mesi_raw=cadenza_mesi,
         importo_raw=importo, quantita_raw=quantita, valuta=valuta,
-        preavviso_giorni_raw=preavviso_giorni, stato_raw=stato, db=db,
+        preavviso_giorni_raw=preavviso_giorni, db=db,
     )
     if errori:
         return templates.TemplateResponse(
@@ -340,6 +360,8 @@ def crea_servizio(
     db.add(Servizio(
         referente=referente.strip() or None,
         note=note.strip() or None,
+        rinnovo_automatico=is_rinnovo,
+        disdetto=is_disdetto,
         **parsed,
     ))
     db.commit()
@@ -368,6 +390,7 @@ def modifica_form(
             "action": f"/servizi/{servizio_id}/modifica",
             "servizio": s,
             "valori": _valori_da_servizio(s),
+            "etichetta_stato_attuale": ETICHETTE_STATO_CONTRATTO[stato_contratto(s)],
             "errori": [],
             **choices,
         },
@@ -382,31 +405,36 @@ def aggiorna_servizio(
     descrizione: str = Form(""),
     tipo: str = Form(""),
     data_inizio: str = Form(""),
-    data_fine: str = Form(""),
+    durata_mesi: str = Form(""),
+    rinnovo_automatico: str | None = Form(None),  # checkbox: present when checked
     cadenza_mesi: str = Form(""),
     importo: str = Form(""),
     quantita: str = Form("1"),
     valuta: str = Form("EUR"),
     preavviso_giorni: str = Form("30"),
-    stato: str = Form(""),
+    disdetto: str | None = Form(None),  # checkbox: present when checked
     referente: str = Form(""),
     note: str = Form(""),
     db: Session = Depends(get_db),
     user: Utente = Depends(require_login),
 ):
     s = _get_or_404(db, servizio_id)
+    is_rinnovo = rinnovo_automatico is not None
+    is_disdetto = disdetto is not None
     valori = _valori_da_form(
         cliente_id=cliente_id, descrizione=descrizione, tipo=tipo,
-        data_inizio=data_inizio, data_fine=data_fine, cadenza_mesi=cadenza_mesi,
+        data_inizio=data_inizio, durata_mesi=durata_mesi, cadenza_mesi=cadenza_mesi,
         importo=importo, quantita=quantita, valuta=valuta,
-        preavviso_giorni=preavviso_giorni, stato=stato,
+        preavviso_giorni=preavviso_giorni,
         referente=referente, note=note,
     )
+    valori["rinnovo_automatico"] = is_rinnovo
+    valori["disdetto"] = is_disdetto
     errori, parsed = _valida(
         cliente_id_raw=cliente_id, descrizione=descrizione, tipo_raw=tipo,
-        data_inizio_raw=data_inizio, data_fine_raw=data_fine, cadenza_mesi_raw=cadenza_mesi,
+        data_inizio_raw=data_inizio, durata_mesi_raw=durata_mesi, cadenza_mesi_raw=cadenza_mesi,
         importo_raw=importo, quantita_raw=quantita, valuta=valuta,
-        preavviso_giorni_raw=preavviso_giorni, stato_raw=stato, db=db,
+        preavviso_giorni_raw=preavviso_giorni, db=db,
     )
     if errori:
         choices = _form_choices(db)
@@ -416,13 +444,17 @@ def aggiorna_servizio(
             request, "servizi/form.html",
             {"user": user, "titolo": f"Modifica — {s.descrizione}",
              "action": f"/servizi/{servizio_id}/modifica",
-             "servizio": s, "valori": valori, "errori": errori, **choices},
+             "servizio": s, "valori": valori, "errori": errori,
+             "etichetta_stato_attuale": ETICHETTE_STATO_CONTRATTO[stato_contratto(s)],
+             **choices},
             status_code=422,
         )
     for field, value in parsed.items():
         setattr(s, field, value)
     s.referente = referente.strip() or None
     s.note = note.strip() or None
+    s.rinnovo_automatico = is_rinnovo
+    s.disdetto = is_disdetto
     db.commit()
     return RedirectResponse(url="/servizi", status_code=303)
 

@@ -17,7 +17,7 @@ from datetime import date
 from decimal import Decimal
 
 import app.models  # noqa: F401  (registers mappers / relationships)
-from app.models.enums import StatoServizio, TipoServizio
+from app.models.enums import TipoServizio
 from app.models.override_importo import OverrideImporto
 from app.models.servizio import Servizio
 from app.services import occorrenze
@@ -26,19 +26,23 @@ from app.services import occorrenze
 TUTTO = (date(2000, 1, 1), date(2100, 12, 31))
 
 
-def _servizio(data_inizio, data_fine, cadenza_mesi, *, importo="10.00", quantita=1):
+def _servizio(data_inizio, data_fine, cadenza_mesi, *, importo="10.00", quantita=1,
+              durata_mesi=None, rinnovo_automatico=False, disdetto=False,
+              preavviso_giorni=30):
     return Servizio(
         cliente_id=1,
         descrizione="Test",
         tipo=TipoServizio.abbonamento,
         data_inizio=data_inizio,
         data_fine=data_fine,
+        durata_mesi=durata_mesi,
+        rinnovo_automatico=rinnovo_automatico,
         cadenza_mesi=cadenza_mesi,
         importo=Decimal(importo),
         quantita=quantita,
         valuta="EUR",
-        preavviso_giorni=30,
-        stato=StatoServizio.attivo,
+        preavviso_giorni=preavviso_giorni,
+        disdetto=disdetto,
     )
 
 
@@ -267,6 +271,119 @@ class TestStatoOccorrenza(unittest.TestCase):
         self.assertEqual(per_data[date(2025, 6, 5)].stato_visivo, "in_scadenza")
         # Far in the future -> normale.
         self.assertEqual(per_data[date(2025, 12, 5)].stato_visivo, "normale")
+
+
+class TestDurataERinnovo(unittest.TestCase):
+    """Contract duration (calcola_data_fine) and auto-renewal (data_fine_effettiva)."""
+
+    # A 12-month contract starting Jan 1 covers through Dec 31 (inclusive),
+    # not Jan 1 of the following year.
+    def test_calcola_data_fine_12_mesi(self):
+        self.assertEqual(
+            occorrenze.calcola_data_fine(date(2026, 1, 1), 12),
+            date(2026, 12, 31),
+        )
+
+    # Day-clamping applies here too: starting on the 31st, a 1-month contract
+    # ends the day before "Feb 31st" clamped to Feb 28 (2026 is not a leap year).
+    def test_calcola_data_fine_clamp(self):
+        self.assertEqual(
+            occorrenze.calcola_data_fine(date(2026, 1, 31), 1),
+            date(2026, 2, 27),
+        )
+
+    # Without rinnovo_automatico, the effective end date is just data_fine,
+    # even if it is long past the reference date.
+    def test_senza_rinnovo_resta_invariata(self):
+        s = _servizio(date(2025, 1, 1), date(2025, 12, 31), cadenza_mesi=1,
+                      durata_mesi=12, rinnovo_automatico=False)
+        self.assertEqual(
+            occorrenze.data_fine_effettiva(s, riferimento=date(2027, 6, 1)),
+            date(2025, 12, 31),
+        )
+
+    # With rinnovo_automatico, an expired contract rolls forward by whole
+    # durata_mesi blocks until it covers the reference date.
+    def test_rinnovo_singolo_blocco(self):
+        s = _servizio(date(2025, 1, 1), date(2025, 12, 31), cadenza_mesi=1,
+                      durata_mesi=12, rinnovo_automatico=True)
+        # Reference date falls in the second yearly block (2026).
+        self.assertEqual(
+            occorrenze.data_fine_effettiva(s, riferimento=date(2026, 6, 1)),
+            date(2026, 12, 31),
+        )
+
+    # Several renewal blocks are chained correctly, not just one.
+    def test_rinnovo_piu_blocchi(self):
+        s = _servizio(date(2025, 1, 1), date(2025, 12, 31), cadenza_mesi=1,
+                      durata_mesi=12, rinnovo_automatico=True)
+        self.assertEqual(
+            occorrenze.data_fine_effettiva(s, riferimento=date(2028, 3, 1)),
+            date(2028, 12, 31),
+        )
+
+    # Integration: occurrence generation for an auto-renewing service keeps
+    # producing occurrences past the originally stored data_fine.
+    def test_occorrenze_oltre_data_fine_con_rinnovo(self):
+        s = _servizio(date(2025, 1, 15), date(2025, 12, 15), cadenza_mesi=1,
+                      durata_mesi=12, rinnovo_automatico=True)
+        occ = occorrenze.occorrenze_nel_periodo(s, date(2026, 3, 1), date(2026, 3, 31))
+        self.assertEqual(_date(occ), [date(2026, 3, 15)])
+
+    # Without rinnovo_automatico, the same query yields nothing: the contract
+    # really did end.
+    def test_nessuna_occorrenza_oltre_data_fine_senza_rinnovo(self):
+        s = _servizio(date(2025, 1, 15), date(2025, 12, 15), cadenza_mesi=1,
+                      durata_mesi=12, rinnovo_automatico=False)
+        occ = occorrenze.occorrenze_nel_periodo(s, date(2026, 3, 1), date(2026, 3, 31))
+        self.assertEqual(occ, [])
+
+
+class TestStatoContratto(unittest.TestCase):
+    """Contract-level state (stato_contratto): attivo/in_scadenza/scaduto/disdetto."""
+
+    def test_attivo(self):
+        s = _servizio(date(2025, 1, 1), date(2025, 12, 31), cadenza_mesi=1, preavviso_giorni=30)
+        self.assertEqual(occorrenze.stato_contratto(s, oggi=date(2025, 6, 1)), "attivo")
+
+    def test_in_scadenza_entro_il_preavviso(self):
+        s = _servizio(date(2025, 1, 1), date(2025, 12, 31), cadenza_mesi=1, preavviso_giorni=30)
+        self.assertEqual(occorrenze.stato_contratto(s, oggi=date(2025, 12, 15)), "in_scadenza")
+
+    def test_scaduto(self):
+        s = _servizio(date(2025, 1, 1), date(2025, 12, 31), cadenza_mesi=1, preavviso_giorni=30)
+        self.assertEqual(occorrenze.stato_contratto(s, oggi=date(2026, 1, 15)), "scaduto")
+
+    # disdetto always wins, even over dates that would otherwise say "attivo".
+    def test_disdetto_vince_su_tutto(self):
+        s = _servizio(date(2025, 1, 1), date(2027, 12, 31), cadenza_mesi=1, disdetto=True)
+        self.assertEqual(occorrenze.stato_contratto(s, oggi=date(2025, 6, 1)), "disdetto")
+
+    # An auto-renewing contract's effective end date never falls behind
+    # "oggi", so it can never be "scaduto" — at most "in_scadenza" right
+    # before it rolls into the next block.
+    def test_rinnovo_automatico_non_scade_mai(self):
+        s = _servizio(date(2025, 1, 1), date(2025, 12, 31), cadenza_mesi=1,
+                      durata_mesi=12, rinnovo_automatico=True, preavviso_giorni=30)
+        self.assertEqual(occorrenze.stato_contratto(s, oggi=date(2028, 3, 1)), "attivo")
+
+    # A disdetto contract's unbilled occurrences must never show the urgent
+    # "da_fatturare"/"in_scadenza" alerts (see _stato_visivo), so the operator
+    # is never nagged to invoice something the customer has cancelled.
+    def test_disdetto_non_genera_da_fatturare(self):
+        s = _servizio(date(2025, 1, 10), date(2025, 1, 10), cadenza_mesi=1, disdetto=True)
+        o = occorrenze.occorrenze_nel_periodo(s, *TUTTO, oggi=date(2025, 6, 1))[0]
+        self.assertEqual(o.stato_visivo, "normale")
+
+    # ...but a disdetto occurrence that WAS already billed still shows
+    # "fatturato" — disdetto only suppresses the alert states, not billing.
+    def test_disdetto_gia_fatturato_resta_fatturato(self):
+        s = _servizio(date(2025, 1, 10), date(2025, 1, 10), cadenza_mesi=1, disdetto=True)
+        s.override_importi.append(
+            OverrideImporto(data_occorrenza=date(2025, 1, 10), fatturato=True)
+        )
+        o = occorrenze.occorrenze_nel_periodo(s, *TUTTO, oggi=date(2025, 6, 1))[0]
+        self.assertEqual(o.stato_visivo, "fatturato")
 
 
 if __name__ == "__main__":

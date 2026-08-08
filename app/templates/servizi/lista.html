@@ -37,7 +37,7 @@
         <select id="f-stato" name="stato">
             <option value="">Tutti</option>
             {% for st in stati %}
-            <option value="{{ st.value }}" {% if filtri.stato == st.value %}selected{% endif %}>{{ st.value }}</option>
+            <option value="{{ st }}" {% if filtri.stato == st %}selected{% endif %}>{{ etichette_stato[st] }}</option>
             {% endfor %}
         </select>
     </div>

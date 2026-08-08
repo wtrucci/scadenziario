@@ -27,7 +27,7 @@ from sqlalchemy.pool import StaticPool
 import app.models  # noqa: F401  (registers all tables on Base.metadata)
 from app.database import Base
 from app.models.cliente import Cliente
-from app.models.enums import StatoServizio, TipoServizio
+from app.models.enums import TipoServizio
 from app.models.override_importo import OverrideImporto
 from app.models.servizio import Servizio
 from app.services import riepilogo
@@ -48,19 +48,19 @@ def _make_engine():
 
 
 def _add_servizio(db, cliente, descrizione, data_inizio, importo, *,
-                  stato=StatoServizio.attivo, referente=None):
+                  data_fine=None, disdetto=False, referente=None):
     s = Servizio(
         cliente=cliente,
         descrizione=descrizione,
         tipo=TipoServizio.abbonamento,
         data_inizio=data_inizio,
-        data_fine=data_inizio,
+        data_fine=data_fine if data_fine is not None else data_inizio,
         cadenza_mesi=1,
         importo=Decimal(importo),
         quantita=1,
         valuta="EUR",
         preavviso_giorni=30,
-        stato=stato,
+        disdetto=disdetto,
         referente=referente,
     )
     db.add(s)
@@ -241,12 +241,15 @@ class TestFiltriRotteServizi(unittest.TestCase):
         beta = Cliente(nome="Beta", attivo=True)
         db.add_all([acme, beta])
         db.flush()
+        # data_fine far in the future so these read as "attivo" regardless of
+        # the actual date the test suite runs on.
+        FUTURO = date(2099, 12, 31)
         _add_servizio(db, acme, "AcmeAttivo", date(2026, 1, 5), "10",
-                      stato=StatoServizio.attivo, referente="Mario")
+                      data_fine=FUTURO, referente="Mario")
         _add_servizio(db, acme, "AcmeDisdetto", date(2026, 1, 6), "10",
-                      stato=StatoServizio.disdetto)
+                      data_fine=FUTURO, disdetto=True)
         _add_servizio(db, beta, "BetaAttivo", date(2026, 1, 7), "10",
-                      stato=StatoServizio.attivo)
+                      data_fine=FUTURO)
         db.commit()
         self.acme_id = acme.id
         db.close()

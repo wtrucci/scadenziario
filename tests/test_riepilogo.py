@@ -26,7 +26,7 @@ from sqlalchemy.pool import StaticPool
 import app.models  # noqa: F401  (registers all tables on Base.metadata)
 from app.database import Base
 from app.models.cliente import Cliente
-from app.models.enums import StatoServizio, TipoServizio
+from app.models.enums import TipoServizio
 from app.models.override_importo import OverrideImporto
 from app.models.servizio import Servizio
 from app.services import periodi, riepilogo
@@ -47,7 +47,7 @@ def _make_engine():
 def _add_servizio(
     db, cliente, descrizione, data_inizio, importo, *,
     data_fine=None, cadenza_mesi=1, quantita=1,
-    stato=StatoServizio.attivo, referente=None,
+    disdetto=False, referente=None,
 ):
     """Add a service. By default it is a single payment (data_fine == data_inizio)
     so each test controls exactly which occurrences exist."""
@@ -62,7 +62,7 @@ def _add_servizio(
         quantita=quantita,
         valuta="EUR",
         preavviso_giorni=30,
-        stato=stato,
+        disdetto=disdetto,
         referente=referente,
     )
     db.add(s)
@@ -112,22 +112,21 @@ class TestLogicaRiepilogo(unittest.TestCase):
             [r.occorrenza.data_occorrenza for r in righe], [date(2026, 12, 10)]
         )
 
-    def test_solo_attivi(self):
-        """The billing summary must exclude every state except 'attivo'."""
-        _add_servizio(self.db, self.acme, "Attivo", date(2026, 12, 10), "10",
-                      stato=StatoServizio.attivo)
+    def test_escludi_disdetti(self):
+        """The billing summary must exclude only cancelled (disdetto) contracts.
+
+        Whether a contract is otherwise "attivo"/"in_scadenza"/"scaduto" is now
+        computed from dates (see stato_contratto), not a manual flag, and does
+        NOT affect this filter — only disdetto (a business decision) does."""
+        _add_servizio(self.db, self.acme, "Attivo", date(2026, 12, 10), "10")
         _add_servizio(self.db, self.acme, "Disdetto", date(2026, 12, 11), "10",
-                      stato=StatoServizio.disdetto)
-        _add_servizio(self.db, self.acme, "Rinnovato", date(2026, 12, 12), "10",
-                      stato=StatoServizio.rinnovato)
-        _add_servizio(self.db, self.acme, "Scaduto", date(2026, 12, 13), "10",
-                      stato=StatoServizio.scaduto)
+                      disdetto=True)
         self.db.flush()
 
         tutti = riepilogo.occorrenze_del_mese(self.db, DICEMBRE)
-        self.assertEqual(len(tutti), 4)
+        self.assertEqual(len(tutti), 2)
 
-        attivi = riepilogo.occorrenze_del_mese(self.db, DICEMBRE, solo_attivi=True)
+        attivi = riepilogo.occorrenze_del_mese(self.db, DICEMBRE, escludi_disdetti=True)
         self.assertEqual([r.servizio.descrizione for r in attivi], ["Attivo"])
 
     def test_raggruppamento_e_somme(self):
@@ -139,7 +138,7 @@ class TestLogicaRiepilogo(unittest.TestCase):
         _add_servizio(self.db, self.beta, "Hosting", date(2026, 12, 7), "100.00", quantita=3)
         self.db.flush()
 
-        righe = riepilogo.occorrenze_del_mese(self.db, DICEMBRE, solo_attivi=True)
+        righe = riepilogo.occorrenze_del_mese(self.db, DICEMBRE, escludi_disdetti=True)
         gruppi = riepilogo.raggruppa_per_cliente(righe)
 
         self.assertEqual([g.cliente.nome for g in gruppi], ["Acme", "Beta"])
@@ -160,7 +159,7 @@ class TestLogicaRiepilogo(unittest.TestCase):
         )
         self.db.flush()
 
-        righe = riepilogo.occorrenze_del_mese(self.db, DICEMBRE, solo_attivi=True)
+        righe = riepilogo.occorrenze_del_mese(self.db, DICEMBRE, escludi_disdetti=True)
         self.assertEqual(len(righe), 1)
         self.assertTrue(righe[0].occorrenza.da_override)
         self.assertEqual(righe[0].occorrenza.totale, Decimal("495.00"))
@@ -171,7 +170,7 @@ class TestLogicaRiepilogo(unittest.TestCase):
     def test_mese_vuoto(self):
         """No occurrences -> empty groups and a zero grand total."""
         gruppi = riepilogo.raggruppa_per_cliente(
-            riepilogo.occorrenze_del_mese(self.db, DICEMBRE, solo_attivi=True)
+            riepilogo.occorrenze_del_mese(self.db, DICEMBRE, escludi_disdetti=True)
         )
         self.assertEqual(gruppi, [])
         self.assertEqual(riepilogo.totale_complessivo(gruppi), Decimal("0"))
@@ -234,7 +233,7 @@ class TestRotte(unittest.TestCase):
                       quantita=2, referente="Mario Rossi")          # 50.00
         _add_servizio(db, beta, "Hosting", date(2026, 12, 20), "90.00")  # 90.00
         _add_servizio(db, acme, "Vecchio", date(2026, 12, 9), "10.00",
-                      stato=StatoServizio.disdetto)                  # excluded from summary
+                      disdetto=True)                  # excluded from summary
         db.commit()
         db.close()
 

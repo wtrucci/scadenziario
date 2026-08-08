@@ -23,7 +23,7 @@ from sqlalchemy.pool import StaticPool
 import app.models  # noqa: F401  (registers all tables on Base.metadata)
 from app.database import Base
 from app.models.cliente import Cliente
-from app.models.enums import StatoServizio, TipoServizio
+from app.models.enums import TipoServizio
 from app.models.override_importo import OverrideImporto
 from app.models.servizio import Servizio
 from app.services.occorrenze import occorrenze_nel_periodo
@@ -62,7 +62,7 @@ class TestToggleFatturato(unittest.TestCase):
             cliente=cliente, descrizione="Servizio", tipo=TipoServizio.abbonamento,
             data_inizio=GEN, data_fine=date(2026, 3, 10), cadenza_mesi=1,
             importo=Decimal("100.00"), quantita=1, valuta="EUR",
-            preavviso_giorni=30, stato=StatoServizio.attivo,
+            preavviso_giorni=30,
         )
         db.add(s)
         db.commit()

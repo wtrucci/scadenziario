@@ -41,22 +41,64 @@ class Occorrenza:
 
 
 def _stato_visivo(
-    data_occorrenza: date, fatturato: bool, preavviso_giorni: int, oggi: date
+    data_occorrenza: date, fatturato: bool, preavviso_giorni: int, oggi: date, *,
+    disdetto: bool = False,
 ) -> str:
     """Classify an occurrence for display, by precedence.
 
-    1. billed                       -> "fatturato"
-    2. not billed and already past  -> "da_fatturare" (the alert: don't forget it)
-    3. not billed and due within the warning window -> "in_scadenza"
-    4. otherwise (future)           -> "normale"
+    1. billed                          -> "fatturato"
+    2. contract cancelled (disdetto), not billed -> "normale" (never nag to
+       invoice something the customer has cancelled — see stato_contratto)
+    3. not billed and already past     -> "da_fatturare" (the alert: don't forget it)
+    4. not billed and due within the warning window -> "in_scadenza"
+    5. otherwise (future)              -> "normale"
     """
     if fatturato:
         return "fatturato"
+    if disdetto:
+        return "normale"
     if data_occorrenza < oggi:
         return "da_fatturare"
     if data_occorrenza <= oggi + timedelta(days=preavviso_giorni):
         return "in_scadenza"
     return "normale"
+
+
+# The four contract-level states shown as the "Stato" badge, in a stable order
+# for filter dropdowns. Unlike the old stato column these are NOT stored:
+# attivo/in_scadenza/scaduto are computed from dates (see stato_contratto);
+# only "disdetto" is a manual decision (Servizio.disdetto), which always wins.
+STATI_CONTRATTO = ("attivo", "in_scadenza", "scaduto", "disdetto")
+
+ETICHETTE_STATO_CONTRATTO = {
+    "attivo": "Attivo",
+    "in_scadenza": "In scadenza",
+    "scaduto": "Scaduto",
+    "disdetto": "Disdetto",
+}
+
+
+def stato_contratto(servizio: Servizio, oggi: date | None = None) -> str:
+    """The contract's own display state — distinct from a single occurrence's
+    stato_visivo. By precedence:
+
+    1. ``disdetto`` (manual flag)                    -> "disdetto" (always wins)
+    2. effective end date already passed             -> "scaduto"
+       (an auto-renewing contract's effective end date never falls behind
+       ``oggi`` — see data_fine_effettiva — so it can never be "scaduto")
+    3. effective end date within preavviso_giorni     -> "in_scadenza"
+    4. otherwise                                      -> "attivo"
+    """
+    if servizio.disdetto:
+        return "disdetto"
+    if oggi is None:
+        oggi = date.today()
+    fine = data_fine_effettiva(servizio, riferimento=oggi)
+    if fine < oggi:
+        return "scaduto"
+    if fine <= oggi + timedelta(days=servizio.preavviso_giorni):
+        return "in_scadenza"
+    return "attivo"
 
 
 def _avanza_mesi(anno: int, mese: int, mesi: int) -> tuple[int, int]:
@@ -66,6 +108,45 @@ def _avanza_mesi(anno: int, mese: int, mesi: int) -> tuple[int, int]:
     """
     totale = anno * 12 + (mese - 1) + mesi
     return totale // 12, totale % 12 + 1
+
+
+def aggiungi_mesi(d: date, mesi: int) -> date:
+    """Add ``mesi`` months to ``d``, clamping the day to the target month's
+    last valid day (e.g. Jan 31 + 1 month -> Feb 28/29, not Mar 3).
+
+    Shared by occurrence-date generation and contract-duration math
+    (``calcola_data_fine``), so both use the same day-clamping rule.
+    """
+    anno, mese = _avanza_mesi(d.year, d.month, mesi)
+    ultimo_giorno = calendar.monthrange(anno, mese)[1]
+    return date(anno, mese, min(d.day, ultimo_giorno))
+
+
+def calcola_data_fine(data_inizio: date, durata_mesi: int) -> date:
+    """The inclusive end date of a ``durata_mesi``-long contract starting at
+    ``data_inizio`` — the day before the same date ``durata_mesi`` months later,
+    so a 12-month contract starting Jan 1 covers Jan 1 through Dec 31.
+    """
+    return aggiungi_mesi(data_inizio, durata_mesi) - timedelta(days=1)
+
+
+def data_fine_effettiva(servizio: Servizio, riferimento: date) -> date:
+    """The contract's effective end date, accounting for automatic renewal.
+
+    Without auto-renewal (``rinnovo_automatico=False``, the default), this is
+    simply ``servizio.data_fine``. With auto-renewal, the contract rolls
+    forward one ``durata_mesi``-long block at a time whenever it would
+    otherwise already have expired, so it always covers at least up to
+    ``riferimento``. Nothing is persisted: like occurrences themselves, the
+    renewed end date is computed on the fly from data_fine + durata_mesi, so
+    no background job is needed to "advance" it.
+    """
+    fine = servizio.data_fine
+    if not servizio.rinnovo_automatico or not servizio.durata_mesi:
+        return fine
+    while fine < riferimento:
+        fine = calcola_data_fine(fine + timedelta(days=1), servizio.durata_mesi)
+    return fine
 
 
 def occorrenze_nel_periodo(
@@ -78,6 +159,11 @@ def occorrenze_nel_periodo(
     date falls on the day-of-month of ``data_inizio``, clamped to the last valid
     day of the target month (see module docstring). Dates outside the requested
     interval are filtered out.
+
+    ``data_fine`` here means the EFFECTIVE end date (see ``data_fine_effettiva``):
+    for an auto-renewing contract this rolls forward as needed to cover
+    ``data_a``, so occurrences keep being generated past the originally stored
+    end date without any stored value ever changing.
 
     For each date a per-occurrence STATE row (OverrideImporto) may exist:
     ``importo``/``quantita`` are used only when not NULL (otherwise the service
@@ -100,6 +186,7 @@ def occorrenze_nel_periodo(
     inizio = servizio.data_inizio
     giorno_target = inizio.day
     occorrenze: list[Occorrenza] = []
+    fine_effettiva = data_fine_effettiva(servizio, riferimento=data_a)
 
     passo = 0
     while True:
@@ -110,8 +197,9 @@ def occorrenze_nel_periodo(
         ultimo_giorno = calendar.monthrange(anno, mese)[1]
         data_occ = date(anno, mese, min(giorno_target, ultimo_giorno))
 
-        # Occurrences are strictly increasing, so once we pass data_fine we stop.
-        if data_occ > servizio.data_fine:
+        # Occurrences are strictly increasing, so once we pass the effective end
+        # date we stop.
+        if data_occ > fine_effettiva:
             break
 
         if data_da <= data_occ <= data_a:
@@ -133,7 +221,8 @@ def occorrenze_nel_periodo(
                 da_override=da_override,
                 fatturato=fatturato,
                 stato_visivo=_stato_visivo(
-                    data_occ, fatturato, servizio.preavviso_giorni, oggi
+                    data_occ, fatturato, servizio.preavviso_giorni, oggi,
+                    disdetto=servizio.disdetto,
                 ),
             ))
 

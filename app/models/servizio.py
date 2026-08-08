@@ -7,7 +7,7 @@ from sqlalchemy import Boolean, Date, DateTime, Enum, ForeignKey, Integer, Numer
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base, utcnow
-from app.models.enums import StatoServizio, TipoServizio
+from app.models.enums import TipoServizio
 
 
 class Servizio(Base):
@@ -17,12 +17,25 @@ class Servizio(Base):
     A service is valid from ``data_inizio`` to ``data_fine`` (inclusive) and is
     billed every ``cadenza_mesi`` months. The individual billable dates
     ("occorrenze") are NOT stored: they are computed on the fly from
-    data_inizio + cadenza_mesi steps until data_fine. A single payment is
-    modelled as data_fine == data_inizio.
+    data_inizio + cadenza_mesi steps until the EFFECTIVE end date (see
+    ``data_fine_effettiva`` in app/services/occorrenze.py). A single payment is
+    modelled as durata_mesi <= cadenza_mesi (so only the first occurrence ever
+    falls within the contract period).
 
     The per-occurrence total defaults to ``quantita * importo`` (see the
     ``totale`` property), unless an OverrideImporto exists for that specific
     occurrence date.
+
+    ``cadenza_mesi`` (how often it's billed) is independent from
+    ``durata_mesi`` (how long the contract runs): e.g. a monthly-billed
+    12-month contract has cadenza_mesi=1, durata_mesi=12, and produces 12
+    occurrences. ``data_fine`` is derived from data_inizio + durata_mesi (see
+    ``calcola_data_fine``) and stored, so it stays a plain indexable column for
+    the SQL "which contracts overlap this month" filter; it is NOT meant to be
+    edited directly. If ``rinnovo_automatico`` is set, the contract rolls
+    forward by another durata_mesi block whenever it would otherwise have
+    expired — computed on the fly (see ``data_fine_effettiva``), nothing here
+    is updated by a background job.
     """
     __tablename__ = "servizi"
 
@@ -36,8 +49,19 @@ class Servizio(Base):
 
     # Contract period: the service is valid from data_inizio to data_fine
     # (inclusive). Each occurrence falls on the day-of-month of data_inizio.
+    # data_fine is derived from data_inizio + durata_mesi, not entered directly
+    # (see the class docstring).
     data_inizio: Mapped[date] = mapped_column(Date)
     data_fine: Mapped[date] = mapped_column(Date)
+
+    # Contract duration in months, used to compute data_fine and, together with
+    # rinnovo_automatico, to roll it forward on renewal. Nullable only for rows
+    # that predate this field; new/edited services always set it.
+    durata_mesi: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+    # If True, the contract auto-renews for another durata_mesi block each time
+    # it expires (see the class docstring and data_fine_effettiva).
+    rinnovo_automatico: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
 
     # Billing cadence in months (1 = monthly, 3 = quarterly, 6 = half-yearly,
     # 12 = yearly, ...). Replaces the old `ricorrenza` enum; there is no longer
@@ -51,9 +75,14 @@ class Servizio(Base):
     valuta: Mapped[str] = mapped_column(String(3), default="EUR")
 
     preavviso_giorni: Mapped[int] = mapped_column(Integer, default=30)
-    stato: Mapped[StatoServizio] = mapped_column(
-        Enum(StatoServizio, native_enum=False, length=20), default=StatoServizio.attivo
-    )
+
+    # The only MANUAL lifecycle flag left: the customer cancelled the contract
+    # early, which dates alone can't tell you. Everything else shown as "Stato"
+    # (attivo/in_scadenza/scaduto) is computed from dates — see stato_contratto
+    # in app/services/occorrenze.py. disdetto always wins over the computed
+    # states and, when set, occurrences stop being flagged "da_fatturare" /
+    # "in_scadenza" (see _stato_visivo in the same module).
+    disdetto: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
 
     # Optional: the colleague/contact to invoice when different from the end customer.
     referente: Mapped[str | None] = mapped_column(String(200))

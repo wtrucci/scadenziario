@@ -25,6 +25,7 @@ from app.database import get_db
 from app.dependencies import require_login
 from app.models.utente import Utente
 from app.services import filtri, periodi, riepilogo
+from app.services.occorrenze import ETICHETTE_STATO_CONTRATTO, stato_contratto
 from app.templating import templates
 
 router = APIRouter()
@@ -93,10 +94,20 @@ def dashboard(
     )
     righe = riepilogo.filtra_per_stato_visivo(righe, stato_val)
 
+    # Contract-level state (Attivo/In scadenza/Scaduto/Disdetto) is computed,
+    # not a column — one lookup per distinct service, reused by the template
+    # for the "Stato servizio" badge.
+    oggi = date.today()
+    stati_servizi = {
+        riga.servizio.id: stato_contratto(riga.servizio, oggi=oggi) for riga in righe
+    }
+
     contesto = {
         "user": user,
         "nav": _navigazione_mese(primo),
         "righe": righe,
+        "stati_servizi": stati_servizi,
+        "etichette_stato": ETICHETTE_STATO_CONTRATTO,
         # Querystring of active filters, appended to the month-nav links so they
         # are preserved when navigating between months.
         "filtri_qs": _filtri_querystring(cliente_id, referente_val, stato_val),
@@ -130,7 +141,7 @@ def riepilogo_mese(
     user: Utente = Depends(require_login),
 ):
     primo = periodi.parse_mese(mese)
-    righe = riepilogo.occorrenze_del_mese(db, primo, solo_attivi=True)
+    righe = riepilogo.occorrenze_del_mese(db, primo, escludi_disdetti=True)
     gruppi = riepilogo.raggruppa_per_cliente(righe)
     totale = riepilogo.totale_complessivo(gruppi)
     return templates.TemplateResponse(
@@ -147,7 +158,8 @@ def riepilogo_export(
     user: Utente = Depends(require_login),
 ):
     primo = periodi.parse_mese(mese)
-    righe = riepilogo.occorrenze_del_mese(db, primo, solo_attivi=True)
+    righe = riepilogo.occorrenze_del_mese(db, primo, escludi_disdetti=True)
+    oggi = date.today()
 
     buffer = io.StringIO()
     # Semicolon delimiter: Italian Excel uses ';' as the list separator, so
@@ -169,7 +181,7 @@ def riepilogo_export(
             _decimale_it(occ.importo),
             _decimale_it(occ.totale),
             s.referente or "",
-            s.stato.value,
+            ETICHETTE_STATO_CONTRATTO[stato_contratto(s, oggi=oggi)],
         ])
 
     # utf-8-sig prepends the BOM Excel needs to open accented text correctly.

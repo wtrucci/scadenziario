@@ -35,31 +35,22 @@
                value="{{ valori.descrizione }}" maxlength="300" required autofocus>
     </div>
 
-    {# --- Tipo / Stato (2 colonne) --- #}
-    <div class="field-row-2">
-        <div class="field">
-            <label for="tipo">Tipo <span class="required">*</span></label>
-            <select id="tipo" name="tipo" required>
-                {% for t in tipi_servizio %}
-                <option value="{{ t.value }}" {% if valori.tipo == t.value %}selected{% endif %}>
-                    {{ t.value | capitalize }}
-                </option>
-                {% endfor %}
-            </select>
-        </div>
-        <div class="field">
-            <label for="stato">Stato <span class="required">*</span></label>
-            <select id="stato" name="stato" required>
-                {% for st in stati %}
-                <option value="{{ st.value }}" {% if valori.stato == st.value %}selected{% endif %}>
-                    {{ st.value | capitalize }}
-                </option>
-                {% endfor %}
-            </select>
-        </div>
+    {# --- Tipo --- #}
+    <div class="field">
+        <label for="tipo">Tipo <span class="required">*</span></label>
+        <select id="tipo" name="tipo" required>
+            {% for t in tipi_servizio %}
+            <option value="{{ t.value }}" {% if valori.tipo == t.value %}selected{% endif %}>
+                {{ t.value | capitalize }}
+            </option>
+            {% endfor %}
+        </select>
     </div>
 
-    {# --- Periodo del contratto: inizio / fine --- #}
+    {# --- Periodo del contratto: inizio / durata. La data di fine NON si
+         inserisce a mano: si calcola da data inizio + durata (vedi
+         calcola_data_fine in app/services/occorrenze.py) e viene mostrata
+         qui sotto solo come anteprima. #}
     <div class="field-row-2">
         <div class="field">
             <label for="data_inizio">Data inizio <span class="required">*</span></label>
@@ -67,11 +58,31 @@
                    value="{{ valori.data_inizio }}" required>
         </div>
         <div class="field">
-            <label for="data_fine">Data fine <span class="required">*</span></label>
-            <input type="text" class="date-picker" id="data_fine" name="data_fine"
-                   value="{{ valori.data_fine }}" required>
-            <small class="muted">Per un pagamento singolo, usa la stessa data di inizio.</small>
+            <label for="durata_mesi">Durata contratto (mesi) <span class="required">*</span></label>
+            <input type="number" id="durata_mesi" name="durata_mesi"
+                   value="{{ valori.durata_mesi }}" min="1" step="1" required>
+            <small class="muted">
+                Data fine: <strong id="data-fine-preview">—</strong>
+            </small>
         </div>
+    </div>
+
+    <div class="field field-inline">
+        <input type="checkbox" id="rinnovo_automatico" name="rinnovo_automatico"
+               {% if valori.rinnovo_automatico %}checked{% endif %}>
+        <label for="rinnovo_automatico">Rinnovo automatico alla scadenza (di un'altra durata contratto)</label>
+    </div>
+
+    {# --- Stato: Attivo/In scadenza/Scaduto si calcolano dalle date (vedi
+         stato_contratto in app/services/occorrenze.py) e non si scelgono qui.
+         L'unica decisione manuale è la disdetta. --- #}
+    {% if servizio is defined %}
+    <p class="muted">Stato attuale: <strong>{{ etichetta_stato_attuale }}</strong></p>
+    {% endif %}
+    <div class="field field-inline">
+        <input type="checkbox" id="disdetto" name="disdetto"
+               {% if valori.disdetto %}checked{% endif %}>
+        <label for="disdetto">Contratto disdetto dal cliente</label>
     </div>
 
     {# --- Cadenza / Preavviso --- #}
@@ -125,4 +136,41 @@
         <a href="/servizi" class="btn btn-secondary">Annulla</a>
     </div>
 </form>
+
+<script>
+    // Live preview only — the server always recomputes and owns the real
+    // data_fine (see calcola_data_fine in app/services/occorrenze.py). Mirrors
+    // the same month-add-with-day-clamp rule purely for user feedback.
+    (function () {
+        function aggiungiMesi(dataIso, mesi) {
+            var p = dataIso.split("-").map(Number);
+            var totale = p[0] * 12 + (p[1] - 1) + mesi;
+            var nuovoAnno = Math.floor(totale / 12);
+            var nuovoMese = (totale % 12) + 1;
+            var ultimoGiorno = new Date(nuovoAnno, nuovoMese, 0).getDate();
+            return new Date(nuovoAnno, nuovoMese - 1, Math.min(p[2], ultimoGiorno));
+        }
+
+        function aggiorna() {
+            var inizioEl = document.getElementById("data_inizio");
+            var durataEl = document.getElementById("durata_mesi");
+            var preview = document.getElementById("data-fine-preview");
+            var inizio = inizioEl.value;
+            var durata = parseInt(durataEl.value, 10);
+            if (!inizio || !durata || durata < 1) { preview.textContent = "—"; return; }
+            var fine = aggiungiMesi(inizio, durata);
+            fine.setDate(fine.getDate() - 1);
+            var gg = String(fine.getDate()).padStart(2, "0");
+            var mm = String(fine.getMonth() + 1).padStart(2, "0");
+            preview.textContent = gg + "/" + mm + "/" + fine.getFullYear();
+        }
+
+        document.addEventListener("DOMContentLoaded", function () {
+            aggiorna();
+            document.getElementById("durata_mesi").addEventListener("input", aggiorna);
+            document.getElementById("data_inizio").addEventListener("change", aggiorna);
+            document.getElementById("data_inizio").addEventListener("input", aggiorna);
+        });
+    })();
+</script>
 {% endblock %}

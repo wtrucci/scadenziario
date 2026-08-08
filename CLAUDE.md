@@ -67,16 +67,58 @@ le scelte tecniche quando non sono banali.
 
 - **Cliente**: id, nome, note, attivo (bool).
 - **Servizio**: id, cliente_id (FK), descrizione, tipo
-  (licenza/contratto/abbonamento/altro), data_inizio, data_fine,
-  cadenza_mesi (int), importo (prezzo unitario di default), quantita
-  (default 1), valuta, preavviso_giorni, stato
-  (attivo/scaduto/rinnovato/disdetto), referente, note.
-  - **data_inizio / data_fine**: il servizio è valido da data_inizio fino a
-    data_fine (fine contratto, inclusa).
+  (licenza/contratto/abbonamento/altro), data_inizio, durata_mesi, data_fine,
+  rinnovo_automatico (bool), cadenza_mesi (int), importo (prezzo unitario di
+  default), quantita (default 1), valuta, preavviso_giorni, disdetto (bool),
+  referente, note.
+  - **Stato mostrato in UI** (Attivo/In scadenza/Scaduto/Disdetto): NON è una
+    colonna. È CALCOLATO da `stato_contratto(servizio, oggi)` in
+    app/services/occorrenze.py, con questa precedenza:
+    1. `disdetto=True` (unico flag manuale) → sempre "Disdetto", qualunque sia
+       la data.
+    2. altrimenti, confronta `data_fine_effettiva` con oggi (+ preavviso_giorni)
+       → "Scaduto" / "In scadenza" / "Attivo". Un contratto a rinnovo
+       automatico non risulta MAI "Scaduto" (la sua fine effettiva non è mai
+       nel passato).
+    Il vecchio Enum `StatoServizio` (attivo/scaduto/rinnovato/disdetto,
+    scelto a mano nel form) è stato rimosso: "rinnovato" non esiste più
+    (superato da durata_mesi/rinnovo_automatico), "attivo/in_scadenza/scaduto"
+    non sono più decisioni manuali. `disdetto` è l'unica decisione commerciale
+    che le date da sole non possono dedurre (il cliente ha annullato il
+    contratto), quindi resta un campo persistito.
+  - **disdetto=True sopprime gli alert delle occorrenze**: un'occorrenza di un
+    contratto disdetto NON risulta mai "Da fatturare"/"In scadenza" (vedi
+    `_stato_visivo` in occorrenze.py) — l'operatore non deve essere sollecitato
+    a fatturare qualcosa che il cliente ha annullato. Se l'occorrenza era già
+    stata fatturata prima della disdetta, resta "Fatturato" (la disdetta non
+    tocca lo storico di fatturazione).
+  - **durata_mesi**: per quanti mesi il contratto viene fatturato (durata),
+    concetto DISTINTO da `cadenza_mesi` (ogni quanto viene fatturato). Es. un
+    contratto annuale fatturato mensilmente ha cadenza_mesi=1, durata_mesi=12
+    (12 occorrenze).
+  - **data_fine** si CALCOLA da data_inizio + durata_mesi (vedi
+    `calcola_data_fine`: giorno prima dell'anniversario a durata_mesi di
+    distanza, così una durata di 12 mesi da gennaio copre gennaio–dicembre
+    inclusi) e NON si inserisce mai a mano nel form: il campo "Data fine" del
+    form storico è stato sostituito da "Durata contratto (mesi)". Resta una
+    colonna sul DB (serve al filtro SQL "quali contratti ricadono nel mese").
+  - **rinnovo_automatico**: se attivo, il contratto si rinnova da solo di un
+    altro blocco di durata_mesi ogni volta che altrimenti sarebbe scaduto. Il
+    rinnovo NON scrive nulla nel DB: la data di fine EFFETTIVA (che tiene conto
+    del rinnovo) si calcola al volo ad ogni lettura con
+    `data_fine_effettiva(servizio, riferimento)` in
+    app/services/occorrenze.py, sullo stesso principio delle occorrenze
+    stesse ("calcolato, non salvato" — niente scheduler di avanzamento). Le
+    query SQL che filtrano i servizi per mese (vedi
+    app/services/riepilogo.py) devono includere i servizi con
+    rinnovo_automatico=True indipendentemente dalla data_fine STORICA salvata,
+    altrimenti sparirebbero dalla dashboard una volta superata la prima
+    scadenza.
   - **cadenza_mesi**: ogni quanti mesi il servizio va fatturato (1 = mensile,
     3 = trimestrale, 6 = semestrale, 12 = annuale, ecc.). Sostituisce il
     vecchio Enum `ricorrenza`. NON esistono più servizi "una tantum": tutto è
-    ricorrente (per un pagamento singolo si usa data_fine = data_inizio).
+    ricorrente (per un pagamento singolo si imposta durata_mesi <= cadenza_mesi,
+    così solo la prima occorrenza ricade nel periodo del contratto).
   - **importo** è il prezzo unitario di default di OGNI occorrenza; il totale
     di un'occorrenza è `quantita * importo` salvo override (vedi sotto). La
     quantità serve per servizi a postazione/licenza (es. antivirus).
@@ -85,7 +127,9 @@ le scelte tecniche quando non sono banali.
 
 - **Occorrenza** (concetto CALCOLATO, NON una tabella): una singola scadenza
   fatturabile. Le occorrenze si generano al volo partendo da data_inizio e
-  aggiungendo cadenza_mesi ripetutamente, finché la data <= data_fine.
+  aggiungendo cadenza_mesi ripetutamente, finché la data <= data_fine EFFETTIVA
+  (`data_fine_effettiva`: con rinnovo_automatico può superare la data_fine
+  storicizzata sul DB).
   - Ogni occorrenza cade nel **giorno del mese di data_inizio** (es. inizio il
     15 → ogni occorrenza il giorno 15 del suo mese). Se un mese non ha quel
     giorno (es. il 31 a febbraio), usare l'ultimo giorno valido del mese.
@@ -152,8 +196,9 @@ le scelte tecniche quando non sono banali.
 - Filtri su pagina servizi e dashboard: per cliente, per referente e per stato
   (es. fatturato / da fatturare). I filtri sono combinabili.
 - Vista "riepilogo da fatturare" per un mese selezionato:
-  - Include SOLO occorrenze di servizi in stato "attivo" (esclude
-    disdetti/rinnovati).
+  - Esclude SOLO le occorrenze di servizi disdetti (`Servizio.disdetto`);
+    "scaduto"/"in scadenza"/"attivo" non influenzano questo filtro (sono stato
+    calcolato, non un criterio di esclusione — vedi sopra).
   - Raggruppa per cliente, con subtotale per cliente e totale complessivo del
     mese. Il totale di ogni occorrenza rispetta eventuali correzioni di
     importo presenti nella tabella di stato per-occorrenza.
@@ -166,10 +211,11 @@ le scelte tecniche quando non sono banali.
 - Gestione utenti (solo admin).
 
 > NOTA: con il modello a occorrenze calcolate, lo "scheduler di avanzamento
-> automatico delle scadenze" non serve più: le occorrenze future esistono già
-> in modo implicito tra data_inizio e data_fine. Il flag rinnovo_automatico e
-> il modello RinnovoLog sono quindi rimossi dal progetto. Resta valido lo
-> scheduler per le NOTIFICHE.
+> automatico delle scadenze" non serve: sia le occorrenze sia (quando
+> rinnovo_automatico è attivo) la data di fine effettiva del contratto si
+> ricalcolano al volo ad ogni lettura, non tramite un job periodico che scrive
+> sul DB. Il modello RinnovoLog non esiste: il rinnovo non produce una riga di
+> log, è puro calcolo. Resta valido lo scheduler per le NOTIFICHE.
 
 ## Convenzioni di progetto
 

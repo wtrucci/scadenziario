@@ -8,13 +8,6 @@ class TipoServizio(enum.Enum):
     altro = "altro"
 
 
-class StatoServizio(enum.Enum):
-    attivo = "attivo"
-    scaduto = "scaduto"
-    rinnovato = "rinnovato"
-    disdetto = "disdetto"
-
-
 class RuoloUtente(enum.Enum):
     admin = "admin"
     utente = "utente"

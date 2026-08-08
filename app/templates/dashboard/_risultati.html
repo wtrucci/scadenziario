@@ -1,7 +1,8 @@
 {# Results region swapped by HTMX on filter changes; also included by the full
    page. Contains the month navigation (so its links pick up the active filters
    after a swap), the heading and the occurrences table.
-   Context: nav, filtri_qs, righe (list of RigaOccorrenza). #}
+   Context: nav, filtri_qs, righe (list of RigaOccorrenza), stati_servizi
+   (servizio.id -> computed contract state), etichette_stato (state -> label). #}
 {% with base_url = "/" %}
 {% include "partials/_navigazione_mese.html" %}
 {% endwith %}
@@ -48,7 +49,8 @@
             <td class="col-num">{{ occ.quantita }}</td>
             <td class="col-num">{{ "%.2f"|format(occ.importo) }} {{ s.valuta }}</td>
             <td class="col-num"><strong>{{ "%.2f"|format(occ.totale) }} {{ s.valuta }}</strong></td>
-            <td><span class="badge badge-stato-{{ s.stato.value }}">{{ s.stato.value }}</span></td>
+            {% set stato_s = stati_servizi[s.id] %}
+            <td><span class="badge badge-stato-{{ stato_s }}">{{ etichette_stato[stato_s] }}</span></td>
             <td>
                 {% with servizio_id = s.id, data_occorrenza = occ.data_occorrenza, fatturato = occ.fatturato %}
                 {% include "servizi/_toggle_fatturato.html" %}

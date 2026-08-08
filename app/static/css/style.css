@@ -37,8 +37,6 @@
     --badge-tipo-bg: #eff6ff;
     --badge-tipo-text: #1e40af;
     --badge-stato-scaduto-bg: #fef2f2;
-    --badge-stato-rinnovato-bg: #f0fdf4;
-    --badge-stato-rinnovato-text: #166534;
 
     --legend-scaduta-bg: #fecaca;
     --legend-in-scadenza-bg: #fde68a;
@@ -83,8 +81,6 @@
     --badge-tipo-bg: #1c2d4a;
     --badge-tipo-text: #93c5fd;
     --badge-stato-scaduto-bg: #3a1e1e;
-    --badge-stato-rinnovato-bg: #16261e;
-    --badge-stato-rinnovato-text: #4ade80;
 
     --legend-scaduta-bg: #7f1d1d;
     --legend-in-scadenza-bg: #78350f;
@@ -359,10 +355,10 @@ tr.row-fatturato:hover { background: var(--row-fatturato-hover-bg) !important; }
 .badge-tipo { background: var(--badge-tipo-bg); color: var(--badge-tipo-text); }
 
 /* Stato badges */
-.badge-stato-attivo    { background: var(--ok-bg);  color: var(--ok-text); }
-.badge-stato-scaduto   { background: var(--badge-stato-scaduto-bg); color: var(--error-text); }
-.badge-stato-rinnovato { background: var(--badge-stato-rinnovato-bg); color: var(--badge-stato-rinnovato-text); }
-.badge-stato-disdetto  { background: var(--off-bg); color: var(--off-text); }
+.badge-stato-attivo      { background: var(--ok-bg);  color: var(--ok-text); }
+.badge-stato-in_scadenza { background: var(--badge-warn-bg); color: var(--badge-warn-text); }
+.badge-stato-scaduto     { background: var(--badge-stato-scaduto-bg); color: var(--error-text); }
+.badge-stato-disdetto    { background: var(--off-bg); color: var(--off-text); }
 
 /* Legend below the servizi table */
 .table-legend { font-size: 0.82rem; color: var(--muted); margin-top: 0.5rem; }

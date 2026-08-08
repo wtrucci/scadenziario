@@ -21,11 +21,10 @@ from dataclasses import dataclass, field
 from datetime import date
 from decimal import Decimal
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.orm import Session, joinedload, selectinload
 
 from app.models.cliente import Cliente
-from app.models.enums import StatoServizio
 from app.models.servizio import Servizio
 from app.services.occorrenze import Occorrenza, occorrenze_nel_periodo
 from app.services.periodi import ultimo_giorno_mese
@@ -46,7 +45,7 @@ def occorrenze_del_mese(
     db: Session,
     primo: date,
     *,
-    solo_attivi: bool = False,
+    escludi_disdetti: bool = False,
     cliente_id: int | None = None,
     referente: str | None = None,
 ) -> list[RigaOccorrenza]:
@@ -54,8 +53,13 @@ def occorrenze_del_mese(
 
     Services are pre-filtered to those whose contract ``[data_inizio, data_fine]``
     overlaps the month; the occurrence engine then produces the exact dates.
-    When ``solo_attivi`` is True only services in state ``attivo`` are considered
-    (used by the billing summary, which excludes disdetti and rinnovati).
+    When ``escludi_disdetti`` is True, cancelled contracts (Servizio.disdetto)
+    are left out entirely (used by the billing summary — a cancelled contract
+    is never to be invoiced, however far its date range still runs). Note this
+    is a different concern from the per-occurrence ``stato_visivo``: even
+    without this flag, disdetto contracts never show "da_fatturare"/
+    "in_scadenza" (see ``_stato_visivo`` in occorrenze.py) — this flag instead
+    hides them from the summary entirely, not just from the urgent-alert states.
 
     ``cliente_id`` and ``referente`` are optional SQL filters on service columns.
     The per-occurrence visual state is NOT filtered here (it is computed, not a
@@ -65,19 +69,22 @@ def occorrenze_del_mese(
     fine = ultimo_giorno_mese(primo)
 
     # Contract overlaps the month if it starts on/before the month end AND ends
-    # on/after the month start.
+    # on/after the month start. An auto-renewing contract has no fixed end (its
+    # EFFECTIVE end rolls forward — see data_fine_effettiva), so the stored
+    # data_fine alone would wrongly drop it from later months: match it on
+    # rinnovo_automatico regardless of the stored data_fine instead.
     query = (
         select(Servizio)
         .where(Servizio.data_inizio <= fine)
-        .where(Servizio.data_fine >= inizio)
+        .where(or_(Servizio.data_fine >= inizio, Servizio.rinnovo_automatico.is_(True)))
         # Eager-load to avoid N+1 queries when expanding occurrences/grouping.
         .options(
             joinedload(Servizio.cliente),
             selectinload(Servizio.override_importi),
         )
     )
-    if solo_attivi:
-        query = query.where(Servizio.stato == StatoServizio.attivo)
+    if escludi_disdetti:
+        query = query.where(Servizio.disdetto.is_(False))
     if cliente_id is not None:
         query = query.where(Servizio.cliente_id == cliente_id)
     if referente:

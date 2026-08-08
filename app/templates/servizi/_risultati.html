@@ -1,5 +1,6 @@
 {# Results region swapped by HTMX on filter changes; also included by the full
-   page. Context: righe (list of (Servizio, cadenza label)), filtri. #}
+   page. Context: righe (list of (Servizio, cadenza label, effective data_fine,
+   computed contract state)), filtri, etichette_stato (state -> label). #}
 {% if righe %}
 <table class="table-servizi">
     <thead>
@@ -18,7 +19,7 @@
         </tr>
     </thead>
     <tbody>
-        {% for s, cadenza in righe %}
+        {% for s, cadenza, data_fine_eff, stato_s in righe %}
         {% include "servizi/_riga.html" %}
         {% endfor %}
     </tbody>
