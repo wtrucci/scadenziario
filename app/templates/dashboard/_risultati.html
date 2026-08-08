@@ -13,6 +13,7 @@
     <thead>
         <tr>
             <th>Cliente</th>
+            <th>Referente</th>
             <th>Descrizione</th>
             <th>Scadenza</th>
             <th class="col-num">Qtà</th>
@@ -29,6 +30,7 @@
         {% set rowcls = {"da_fatturare": "row-da-fatturare", "in_scadenza": "row-in-scadenza", "fatturato": "row-fatturato"}.get(occ.stato_visivo, "") %}
         <tr class="{{ rowcls }}">
             <td>{{ s.cliente.nome }}</td>
+            <td>{% if s.referente %}{{ s.referente }}{% else %}<span class="muted">—</span>{% endif %}</td>
             <td>{{ s.descrizione }}</td>
             <td class="col-data">
                 {{ occ.data_occorrenza.strftime('%d/%m/%Y') }}

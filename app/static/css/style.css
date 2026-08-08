@@ -17,6 +17,79 @@
     --ok-text: #166534;
     --off-bg: #f3f4f6;
     --off-text: #6b7280;
+    --table-hover-bg: #f9fafb;
+
+    /* Occurrence/service row and badge colors — named per meaning so the
+       dark theme below can redefine them without touching every rule. */
+    --row-scaduta-bg: #fef2f2;
+    --row-scaduta-hover-bg: #fee2e2;
+    --row-in-scadenza-bg: #fffbeb;
+    --row-in-scadenza-hover-bg: #fef3c7;
+    --row-da-fatturare-bg: #fef2f2;
+    --row-da-fatturare-hover-bg: #fee2e2;
+    --row-fatturato-bg: #f0fdf4;
+    --row-fatturato-hover-bg: #dcfce7;
+
+    --badge-warn-bg: #fef3c7;
+    --badge-warn-text: #92400e;
+    --badge-da-fatturare-bg: #fee2e2;
+    --badge-da-fatturare-text: #991b1b;
+    --badge-tipo-bg: #eff6ff;
+    --badge-tipo-text: #1e40af;
+    --badge-stato-scaduto-bg: #fef2f2;
+    --badge-stato-rinnovato-bg: #f0fdf4;
+    --badge-stato-rinnovato-text: #166534;
+
+    --legend-scaduta-bg: #fecaca;
+    --legend-in-scadenza-bg: #fde68a;
+    --legend-da-fatturare-bg: #fecaca;
+    --legend-fatturato-bg: #bbf7d0;
+}
+
+/* Dark theme: same variable names, dark-adjusted values. Applied via
+   data-theme="dark" on <html>, toggled by the theme button (see base.html). */
+:root[data-theme="dark"] {
+    --bg: #16181d;
+    --surface: #1e2128;
+    --border: #333844;
+    --text: #e6e8eb;
+    --muted: #9199a6;
+    --primary: #3b82f6;
+    --primary-hover: #60a5fa;
+    --danger: #f87171;
+    --danger-hover: #fca5a5;
+    --error-bg: #3a1e1e;
+    --error-border: #5c2626;
+    --error-text: #fca5a5;
+    --ok-bg: #16342a;
+    --ok-text: #4ade80;
+    --off-bg: #2a2d35;
+    --off-text: #9199a6;
+    --table-hover-bg: #262a33;
+
+    --row-scaduta-bg: #3a1e1e;
+    --row-scaduta-hover-bg: #4a2424;
+    --row-in-scadenza-bg: #3a2f14;
+    --row-in-scadenza-hover-bg: #4a3c18;
+    --row-da-fatturare-bg: #3a1e1e;
+    --row-da-fatturare-hover-bg: #4a2424;
+    --row-fatturato-bg: #16261e;
+    --row-fatturato-hover-bg: #1c3327;
+
+    --badge-warn-bg: #4a3c18;
+    --badge-warn-text: #fbbf24;
+    --badge-da-fatturare-bg: #4a2424;
+    --badge-da-fatturare-text: #fca5a5;
+    --badge-tipo-bg: #1c2d4a;
+    --badge-tipo-text: #93c5fd;
+    --badge-stato-scaduto-bg: #3a1e1e;
+    --badge-stato-rinnovato-bg: #16261e;
+    --badge-stato-rinnovato-text: #4ade80;
+
+    --legend-scaduta-bg: #7f1d1d;
+    --legend-in-scadenza-bg: #78350f;
+    --legend-da-fatturare-bg: #7f1d1d;
+    --legend-fatturato-bg: #14532d;
 }
 
 * { box-sizing: border-box; }
@@ -51,6 +124,12 @@ a:hover { color: var(--primary-hover); }
     text-decoration: none;
 }
 
+.topbar-right {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+}
+
 .topbar-nav {
     display: flex;
     align-items: center;
@@ -60,6 +139,25 @@ a:hover { color: var(--primary-hover); }
 
 .nav-sep { color: var(--border); }
 .nav-user { color: var(--muted); }
+
+/* Light/dark theme toggle (icon-only button, top right). */
+.theme-toggle {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 2rem;
+    height: 2rem;
+    padding: 0;
+    background: none;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    font-size: 1.05rem;
+    line-height: 1;
+    cursor: pointer;
+    color: var(--text);
+}
+
+.theme-toggle:hover { background: var(--bg); }
 
 /* ------------------------------------------------------------------ Layout */
 
@@ -146,7 +244,7 @@ th {
 }
 
 tbody tr:last-child td { border-bottom: none; }
-tbody tr:hover { background: #f9fafb; }
+tbody tr:hover { background: var(--table-hover-bg); }
 
 .col-actions { white-space: nowrap; }
 .col-actions a,
@@ -236,43 +334,43 @@ tbody tr:hover { background: #f9fafb; }
 
 /* ----------------------------------------------------------- Row highlights */
 
-tr.row-scaduta { background: #fef2f2 !important; }
-tr.row-scaduta:hover { background: #fee2e2 !important; }
-tr.row-in-scadenza { background: #fffbeb !important; }
-tr.row-in-scadenza:hover { background: #fef3c7 !important; }
+tr.row-scaduta { background: var(--row-scaduta-bg) !important; }
+tr.row-scaduta:hover { background: var(--row-scaduta-hover-bg) !important; }
+tr.row-in-scadenza { background: var(--row-in-scadenza-bg) !important; }
+tr.row-in-scadenza:hover { background: var(--row-in-scadenza-hover-bg) !important; }
 /* Occurrence visual states (dashboard).
    "Da fatturare" = past and not billed: an ALERT, deliberately prominent (NOT
    muted) with a red accent, because it's what must not be forgotten. */
-tr.row-da-fatturare { background: #fef2f2 !important; box-shadow: inset 3px 0 0 var(--danger); }
-tr.row-da-fatturare:hover { background: #fee2e2 !important; }
+tr.row-da-fatturare { background: var(--row-da-fatturare-bg) !important; box-shadow: inset 3px 0 0 var(--danger); }
+tr.row-da-fatturare:hover { background: var(--row-da-fatturare-hover-bg) !important; }
 /* "Fatturato" = done: neutral/green and de-emphasised. */
-tr.row-fatturato { background: #f0fdf4 !important; color: var(--muted); }
-tr.row-fatturato:hover { background: #dcfce7 !important; }
+tr.row-fatturato { background: var(--row-fatturato-bg) !important; color: var(--muted); }
+tr.row-fatturato:hover { background: var(--row-fatturato-hover-bg) !important; }
 
 /* ------------------------------------------------------------------ Badges */
 
-.badge-warn { background: #fef3c7; color: #92400e; }
+.badge-warn { background: var(--badge-warn-bg); color: var(--badge-warn-text); }
 
 /* Occurrence-state badges */
-.badge-da-fatturare { background: #fee2e2; color: #991b1b; }
+.badge-da-fatturare { background: var(--badge-da-fatturare-bg); color: var(--badge-da-fatturare-text); }
 .badge-fatturato    { background: var(--ok-bg); color: var(--ok-text); }
 
 /* Tipo badges */
-.badge-tipo { background: #eff6ff; color: #1e40af; }
+.badge-tipo { background: var(--badge-tipo-bg); color: var(--badge-tipo-text); }
 
 /* Stato badges */
 .badge-stato-attivo    { background: var(--ok-bg);  color: var(--ok-text); }
-.badge-stato-scaduto   { background: #fef2f2; color: var(--error-text); }
-.badge-stato-rinnovato { background: #f0fdf4; color: #166534; }
+.badge-stato-scaduto   { background: var(--badge-stato-scaduto-bg); color: var(--error-text); }
+.badge-stato-rinnovato { background: var(--badge-stato-rinnovato-bg); color: var(--badge-stato-rinnovato-text); }
 .badge-stato-disdetto  { background: var(--off-bg); color: var(--off-text); }
 
 /* Legend below the servizi table */
 .table-legend { font-size: 0.82rem; color: var(--muted); margin-top: 0.5rem; }
 .legend-dot { display: inline-block; width: 10px; height: 10px; border-radius: 2px; }
-.legend-scaduta    { background: #fecaca; }
-.legend-in-scadenza { background: #fde68a; }
-.legend-da-fatturare { background: #fecaca; }
-.legend-fatturato  { background: #bbf7d0; }
+.legend-scaduta    { background: var(--legend-scaduta-bg); }
+.legend-in-scadenza { background: var(--legend-in-scadenza-bg); }
+.legend-da-fatturare { background: var(--legend-da-fatturare-bg); }
+.legend-fatturato  { background: var(--legend-fatturato-bg); }
 
 /* Numeric columns (qty, price, total) — right-aligned */
 .col-num { text-align: right; white-space: nowrap; }

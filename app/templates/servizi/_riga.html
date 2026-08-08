@@ -2,13 +2,13 @@
    Context: s (Servizio), cadenza (human-readable cadence label) #}
 <tr id="servizio-{{ s.id }}">
     <td>{{ s.cliente.nome }}</td>
+    <td>{% if s.referente %}{{ s.referente }}{% else %}<span class="muted">—</span>{% endif %}</td>
     <td>{{ s.descrizione }}</td>
     <td><span class="badge badge-tipo">{{ s.tipo.value }}</span></td>
     <td class="col-data">
         {{ s.data_inizio.strftime('%d/%m/%Y') }} – {{ s.data_fine.strftime('%d/%m/%Y') }}
     </td>
     <td>{{ cadenza }}</td>
-    <td>{% if s.referente %}{{ s.referente }}{% else %}<span class="muted">—</span>{% endif %}</td>
     <td class="col-num">{{ s.quantita }}</td>
     <td class="col-num">{{ "%.2f"|format(s.importo) }} {{ s.valuta }}</td>
     <td class="col-num"><strong>{{ "%.2f"|format(s.totale) }} {{ s.valuta }}</strong></td>

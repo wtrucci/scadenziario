@@ -63,12 +63,12 @@
     <div class="field-row-2">
         <div class="field">
             <label for="data_inizio">Data inizio <span class="required">*</span></label>
-            <input type="date" id="data_inizio" name="data_inizio"
+            <input type="text" class="date-picker" id="data_inizio" name="data_inizio"
                    value="{{ valori.data_inizio }}" required>
         </div>
         <div class="field">
             <label for="data_fine">Data fine <span class="required">*</span></label>
-            <input type="date" id="data_fine" name="data_fine"
+            <input type="text" class="date-picker" id="data_fine" name="data_fine"
                    value="{{ valori.data_fine }}" required>
             <small class="muted">Per un pagamento singolo, usa la stessa data di inizio.</small>
         </div>

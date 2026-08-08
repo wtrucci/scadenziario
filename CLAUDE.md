@@ -33,7 +33,17 @@ le scelte tecniche quando non sono banali.
 - **Database:** SQLite (file singolo, volume montato). Mantenere la
   compatibilità con una futura migrazione a PostgreSQL.
 - **Frontend:** template server-side Jinja2 + HTMX (NIENTE SPA, niente build
-  step JavaScript, niente npm per il frontend).
+  step JavaScript, niente npm per il frontend). Librerie JS puntuali (es.
+  flatpickr per i date picker) si caricano da CDN come HTMX, mai via npm.
+- **Date nei form:** i campi data usano flatpickr (via CDN) invece del widget
+  nativo `<input type="date">`, che segue la lingua del browser/OS e può
+  mostrare mm/dd/yyyy. Mostra sempre dd/mm/yyyy; il valore inviato al server
+  resta ISO yyyy-mm-dd.
+- **Tema chiaro/scuro:** icona toggle in alto a destra su ogni pagina. Scelta
+  salvata in `localStorage`, applicata prima del render per evitare flash; al
+  primo accesso segue la preferenza del sistema operativo. Tutti i colori sono
+  variabili CSS in `style.css` (incluse le sfumature di stato: righe/badge di
+  scadenza, fatturazione, ecc.), ridefinite sotto `:root[data-theme="dark"]`.
 - **Scheduler notifiche:** APScheduler nel processo applicativo.
 - **Autenticazione:** login utente/password con hashing sicuro (bcrypt/argon2),
   sessioni. Ruoli base (admin / utente). Predisporre per futura integrazione
@@ -194,4 +204,4 @@ le scelte tecniche quando non sono banali.
 
 - Procedere per piccoli incrementi verificabili, un blocco alla volta.
 - Prima di modifiche estese, spiegare il piano e attendere conferma.
-- Dopo ogni blocco significativo, proporre un commit Git con messaggio chiaro.
+  - Dopo ogni blocco significativo, proporre un commit Git con messaggio chiaro.

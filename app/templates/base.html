@@ -4,26 +4,75 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>{% block title %}Scadenziario{% endblock %}</title>
+    <script>
+        // Applied before the CSS/body render, so the page never flashes the
+        // wrong theme. Falls back to the OS preference on first visit; after
+        // that the user's explicit choice (localStorage) always wins.
+        (function () {
+            var stored = localStorage.getItem("theme");
+            var theme = stored || (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+            document.documentElement.setAttribute("data-theme", theme);
+        })();
+    </script>
     <link rel="stylesheet" href="{{ url_for('static', path='css/style.css') }}">
     <!-- HTMX: loaded from CDN. No build step, no npm. -->
     <script src="https://unpkg.com/htmx.org@2.0.3"></script>
+    <!-- flatpickr: date picker that always displays dd/mm/yyyy regardless of
+         the browser/OS locale (the native <input type="date"> widget follows
+         the browser locale instead, which showed mm/dd/yyyy for some users). -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
 </head>
 <body>
     <header class="topbar">
         <a class="brand" href="/">Scadenziario</a>
-        {% if user is defined and user %}
-        <nav class="topbar-nav">
-            <a href="/">Dashboard</a>
-            <a href="/clienti">Clienti</a>
-            <a href="/servizi">Servizi</a>
-            <span class="nav-sep">|</span>
-            <span class="nav-user">{{ user.username }}</span>
-            <a href="/logout">Esci</a>
-        </nav>
-        {% endif %}
+        <div class="topbar-right">
+            {% if user is defined and user %}
+            <nav class="topbar-nav">
+                <a href="/">Dashboard</a>
+                <a href="/clienti">Clienti</a>
+                <a href="/servizi">Servizi</a>
+                <span class="nav-sep">|</span>
+                <span class="nav-user">{{ user.username }}</span>
+                <a href="/logout">Esci</a>
+            </nav>
+            {% endif %}
+            <button id="theme-toggle" class="theme-toggle" type="button"
+                    title="Cambia tema chiaro/scuro" aria-label="Cambia tema chiaro/scuro"></button>
+        </div>
     </header>
     <main class="content">
         {% block content %}{% endblock %}
     </main>
+    <script>
+        // Init flatpickr on every .date-picker input, in the current page and
+        // in anything HTMX swaps in later (e.g. a form loaded into a fragment).
+        function initDatePickers(root) {
+            root.querySelectorAll(".date-picker").forEach(function (el) {
+                flatpickr(el, { dateFormat: "Y-m-d", altInput: true, altFormat: "d/m/Y", allowInput: true });
+            });
+        }
+        document.addEventListener("DOMContentLoaded", function () { initDatePickers(document); });
+        document.addEventListener("htmx:afterSwap", function (e) { initDatePickers(e.target); });
+
+        // Light/dark theme toggle. The initial data-theme attribute is set
+        // synchronously in <head> (see above) to avoid a flash on load; this
+        // just keeps the icon in sync and handles the click.
+        function syncThemeToggleIcon() {
+            var btn = document.getElementById("theme-toggle");
+            var isDark = document.documentElement.getAttribute("data-theme") === "dark";
+            btn.textContent = isDark ? "☀️" : "🌙";
+            btn.title = isDark ? "Passa al tema chiaro" : "Passa al tema scuro";
+        }
+        document.addEventListener("DOMContentLoaded", function () {
+            syncThemeToggleIcon();
+            document.getElementById("theme-toggle").addEventListener("click", function () {
+                var next = document.documentElement.getAttribute("data-theme") === "dark" ? "light" : "dark";
+                document.documentElement.setAttribute("data-theme", next);
+                localStorage.setItem("theme", next);
+                syncThemeToggleIcon();
+            });
+        });
+    </script>
 </body>
 </html>
