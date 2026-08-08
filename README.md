@@ -137,4 +137,5 @@ tests/          test automatici (pytest)
 
 ## Licenza
 
-Da definire.
+[MIT](LICENSE) — uso, modifica e distribuzione liberi, anche a livello
+commerciale.
