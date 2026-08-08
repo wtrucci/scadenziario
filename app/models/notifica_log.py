@@ -1,12 +1,12 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 
-from sqlalchemy import Boolean, DateTime, Enum, ForeignKey, Text
+from sqlalchemy import Boolean, Date, DateTime, Enum, ForeignKey, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base, utcnow
-from app.models.enums import CanalNotifica
+from app.models.enums import CanalNotifica, TipoNotifica
 
 
 class NotificaLog(Base):
@@ -14,6 +14,16 @@ class NotificaLog(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     servizio_id: Mapped[int] = mapped_column(ForeignKey("servizi.id"))
+
+    # The date this notification refers to: an occurrence date for
+    # preavviso/promemoria_7_giorni, or the contract's effective end date for
+    # contratto_scaduto. So dedup works per (servizio, data, tipo, canale).
+    data_occorrenza: Mapped[date] = mapped_column(Date)
+
+    # Which of the three triggers produced this notification (see TipoNotifica).
+    tipo: Mapped[TipoNotifica] = mapped_column(
+        Enum(TipoNotifica, native_enum=False, length=30)
+    )
 
     canale: Mapped[CanalNotifica] = mapped_column(
         Enum(CanalNotifica, native_enum=False, length=30)

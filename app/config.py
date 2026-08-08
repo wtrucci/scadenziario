@@ -37,5 +37,18 @@ class Settings:
     FIRST_ADMIN_USERNAME: str = os.environ.get("FIRST_ADMIN_USERNAME", "")
     FIRST_ADMIN_PASSWORD: str = os.environ.get("FIRST_ADMIN_PASSWORD", "")
 
+    # Telegram Bot API credentials for expiration notifications. Left empty in
+    # dev/test: the scheduler logs a warning and skips sending instead of
+    # crashing when they are not set (see app/scheduler.py).
+    TELEGRAM_BOT_TOKEN: str = os.environ.get("TELEGRAM_BOT_TOKEN", "")
+    TELEGRAM_CHAT_ID: str = os.environ.get("TELEGRAM_CHAT_ID", "")
+
+    # How often the scheduler checks for upcoming expirations.
+    NOTIFICATION_CHECK_INTERVAL_MINUTES: int = int(
+        os.environ.get("NOTIFICATION_CHECK_INTERVAL_MINUTES", "60")
+    )
+
+    TZ: str = os.environ.get("TZ", "Europe/Rome")
+
 
 settings = Settings()

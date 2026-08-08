@@ -20,6 +20,7 @@ from app.dependencies import (
     NotAuthorizedError,
 )
 from app.routes import auth, clienti, dashboard, servizi
+from app.scheduler import avvia_scheduler, ferma_scheduler
 from app.templating import templates
 
 logging.basicConfig(level=logging.INFO)
@@ -43,7 +44,10 @@ async def lifespan(app: FastAPI):
         create_first_admin(db)
     finally:
         db.close()
+
+    avvia_scheduler()
     yield
+    ferma_scheduler()
 
 
 app = FastAPI(title="Scadenziario", lifespan=lifespan)
