@@ -329,6 +329,12 @@ dialog.filtri-dialog::backdrop { background: rgba(0, 0, 0, 0.5); }
 
 .btn.btn-secondary:hover { background: var(--bg); }
 
+.btn-small {
+    padding: 0.15rem 0.6rem;
+    font-size: 0.78rem;
+    vertical-align: middle;
+}
+
 /* Inline text-style button (e.g. delete in table rows) */
 .btn-link {
     background: none;
@@ -342,6 +348,43 @@ dialog.filtri-dialog::backdrop { background: rgba(0, 0, 0, 0.5); }
 
 .btn-link.btn-danger { color: var(--danger); }
 .btn-link.btn-danger:hover { color: var(--danger-hover); }
+
+/* "Mark as billed" action (riepilogo row) — an outlined pill in the "ok"
+   status colour, so it reads as a positive confirm action and stays legible
+   in both themes (plain text links were too low-contrast on dark). */
+.btn-ok {
+    display: inline-block;
+    padding: 0.2rem 0.7rem;
+    background: var(--ok-bg);
+    color: var(--ok-text);
+    border: 1px solid var(--ok-text);
+    border-radius: 999px;
+    font-size: 0.78rem;
+    font-weight: 600;
+    cursor: pointer;
+    text-decoration: none;
+    line-height: 1.4;
+}
+
+.btn-ok:hover { filter: brightness(1.1); }
+
+/* Same pill, "not billed yet" colour — the dashboard's toggle shows both
+   states (unlike riepilogo, which only ever shows the unbilled one). */
+.btn-warn {
+    display: inline-block;
+    padding: 0.2rem 0.7rem;
+    background: var(--row-da-fatturare-bg);
+    color: var(--danger);
+    border: 1px solid var(--danger);
+    border-radius: 999px;
+    font-size: 0.78rem;
+    font-weight: 600;
+    cursor: pointer;
+    text-decoration: none;
+    line-height: 1.4;
+}
+
+.btn-warn:hover { filter: brightness(1.1); }
 
 /* ------------------------------------------------------------------ Tables */
 
@@ -627,6 +670,9 @@ tr.row-fatturato:hover { background: var(--row-fatturato-hover-bg) !important; }
 .cliente-group h3 {
     margin: 0 0 0.5rem;
     font-size: 1.05rem;
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
 }
 
 /* Per-customer subtotal row in the summary table footer */
@@ -653,7 +699,3 @@ tr.row-fatturato:hover { background: var(--row-fatturato-hover-bg) !important; }
    title instead of sitting in a permanent toolbar/card on the page. */
 .filtri { display: flex; flex-wrap: wrap; gap: 1rem; }
 .filtri .field { margin-bottom: 0; }
-
-/* "Fatturato" toggle button (per-occurrence, HTMX). */
-.fatturato-off { color: var(--danger); font-weight: 600; }
-.fatturato-on  { color: var(--ok-text); font-weight: 600; }

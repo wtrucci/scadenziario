@@ -7,8 +7,8 @@
    re-rendered (see toggle_fatturato in app/routes/servizi.py), not just this
    button. Current month/filters ride along via hx-vals/hx-include so the
    route can rebuild the same view. #}
-<button id="fatturato-{{ servizio_id }}-{{ data_occorrenza.isoformat() }}"
-        class="btn-link {% if fatturato %}fatturato-on{% else %}fatturato-off{% endif %}"
+<button type="button" id="fatturato-{{ servizio_id }}-{{ data_occorrenza.isoformat() }}"
+        class="{% if fatturato %}btn-ok{% else %}btn-warn{% endif %}"
         hx-post="/servizi/{{ servizio_id }}/occorrenze/{{ data_occorrenza.isoformat() }}/fatturato"
         hx-target="#risultati"
         hx-swap="innerHTML"

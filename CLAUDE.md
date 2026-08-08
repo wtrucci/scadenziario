@@ -202,7 +202,15 @@ le scelte tecniche quando non sono banali.
   - Raggruppa per cliente, con subtotale per cliente e totale complessivo del
     mese. Il totale di ogni occorrenza rispetta eventuali correzioni di
     importo presenti nella tabella di stato per-occorrenza.
-  - Esportabile in CSV.
+  - Esportabile in CSV (tutti i clienti del mese, un unico file).
+  - Esportabile anche in PDF, ma solo **per singolo cliente** (un pulsante
+    "PDF" accanto a ciascun gruppo cliente in `riepilogo/index.html`,
+    `GET /riepilogo/export/pdf?cliente_id=...`): pensato per essere
+    inoltrato al cliente stesso, a differenza del CSV che resta un export
+    interno per l'intero mese. Generato con `fpdf2` (Python puro, nessuna
+    dipendenza di sistema come Pango/Cairo) in `app/services/pdf.py`. Non è
+    fatturazione vera (niente numerazione fiscale, PDF/A, firma, ecc.): resta
+    un riepilogo, solo in un formato diverso dal CSV.
 - Calcolo occorrenze: implementare in un modulo di servizio dedicato e ben
   testato (è il cuore dell'app). Mantenere SEMPRE Decimal per i valori
   monetari, mai float.
@@ -244,7 +252,10 @@ le scelte tecniche quando non sono banali.
 - Niente webhook (rimandati a fase successiva; canale notifiche estendibile).
 - Niente integrazione OIDC/AD (solo predisporre).
 - Niente PostgreSQL come default (ma non precludere la migrazione).
-- Niente fatturazione vera/PDF in questa fase (solo riepilogo + export CSV).
+- Niente fatturazione vera in questa fase (niente numerazione fiscale,
+  PDF/A, firma digitale, invio automatico al cliente): solo riepilogo,
+  esportabile in CSV (tutti i clienti) o PDF (per singolo cliente — vedi
+  sopra).
 
 ## Modalità di lavoro con l'autore
 

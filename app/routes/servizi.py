@@ -25,11 +25,12 @@ from app.models.enums import TipoServizio
 from app.models.override_importo import OverrideImporto
 from app.models.servizio import Servizio
 from app.models.utente import Utente
-from app.routes.dashboard import _contesto_risultati
-from app.services import filtri
+from app.routes.dashboard import _contesto_riepilogo, _contesto_risultati
+from app.services import filtri, periodi, riepilogo
 from app.services.occorrenze import (
     ETICHETTE_STATO_CONTRATTO,
     STATI_CONTRATTO,
+    Occorrenza,
     calcola_data_fine,
     data_fine_effettiva,
     occorrenze_nel_periodo,
@@ -50,6 +51,38 @@ def _get_or_404(db: Session, servizio_id: int) -> Servizio:
     if s is None:
         raise HTTPException(status_code=404, detail="Servizio non trovato")
     return s
+
+
+def _imposta_fatturato(
+    db: Session, servizio_id: int, data_occorrenza: date, occ: Occorrenza, fatturato: bool
+) -> None:
+    """Get-or-create the per-occurrence state row and set its fatturato flag.
+
+    Billing (fatturato=True) freezes the price: it snapshots the current
+    effective price/quantity (override-aware) into the row, so a later change
+    to the service price does not alter what was already billed. Un-billing
+    clears that snapshot ONLY if it was not a deliberate manual override.
+    Shared by the single-occurrence toggle and the per-customer bulk action.
+    """
+    stato = db.scalars(
+        select(OverrideImporto)
+        .where(OverrideImporto.servizio_id == servizio_id)
+        .where(OverrideImporto.data_occorrenza == data_occorrenza)
+    ).first()
+    if stato is None:
+        stato = OverrideImporto(servizio_id=servizio_id, data_occorrenza=data_occorrenza)
+        db.add(stato)
+
+    stato.fatturato = fatturato
+    if fatturato:
+        stato.importo = occ.importo
+        stato.quantita = occ.quantita
+        stato.fatturato_il = utcnow()
+    else:
+        stato.fatturato_il = None
+        if not stato.override_manuale:
+            stato.importo = None
+            stato.quantita = None
 
 
 def _clienti_attivi(db: Session) -> list[Cliente]:
@@ -483,6 +516,7 @@ def toggle_fatturato(
     cliente: str | None = Form(None),
     referente: str | None = Form(None),
     stato_filtro: str | None = Form(None, alias="stato"),
+    vista: str = Form("dashboard"),
     db: Session = Depends(get_db),
     user: Utente = Depends(require_login),
 ):
@@ -490,20 +524,18 @@ def toggle_fatturato(
     Toggle the "fatturato" flag for one occurrence (HTMX).
 
     Occurrences are not stored, so the flag lives on a per-occurrence state row
-    (OverrideImporto). We accept the date only if it is a real occurrence of the
-    service, to avoid creating state rows on bogus dates.
+    (OverrideImporto); see _imposta_fatturato for the snapshot/undo rules.
+    We accept the date only if it is a real occurrence of the service, to
+    avoid creating state rows on bogus dates.
 
-    Billing freezes the price: on fatturato=True we snapshot the current
-    effective price/quantity (override-aware) into the row, so a later change to
-    the service price does not alter what was already billed. On un-billing we
-    clear that snapshot ONLY if it was not a deliberate manual override.
-
-    The toggle button is only used on the dashboard (see
-    servizi/_toggle_fatturato.html), which sends the currently active month and
-    filters along (hx-vals/hx-include). We re-render the whole results region
-    with them — not just the button — because the new fatturato state can (a)
-    change the summary card counts and (b) make the row itself disappear from
-    an active stato filter (e.g. filtering "Da fatturare" and billing it).
+    Used from two places, told apart by ``vista``:
+    - dashboard (servizi/_toggle_fatturato.html): sends the active month and
+      filters, and we re-render the whole results region because billing can
+      change the summary counts and drop the row out of an active stato
+      filter.
+    - riepilogo (riepilogo/_toggle_fatturato.html): billing there always
+      means "remove from the list" (see _contesto_riepilogo), so the results
+      region is re-rendered there too, for the same reason.
     """
     s = _get_or_404(db, servizio_id)
 
@@ -514,32 +546,41 @@ def toggle_fatturato(
         raise HTTPException(status_code=404, detail="Occorrenza non trovata")
     occ = occorrenze[0]
 
-    stato = db.scalars(
-        select(OverrideImporto)
-        .where(OverrideImporto.servizio_id == servizio_id)
-        .where(OverrideImporto.data_occorrenza == data_occorrenza)
-    ).first()
-
-    if stato is None:
-        # No state row yet: create one carrying only the fatturato flag.
-        stato = OverrideImporto(servizio_id=servizio_id, data_occorrenza=data_occorrenza)
-        db.add(stato)
-
-    stato.fatturato = not stato.fatturato
-    if stato.fatturato:
-        # Billing ON: freeze the effective price/quantity at this moment.
-        stato.importo = occ.importo
-        stato.quantita = occ.quantita
-        stato.fatturato_il = utcnow()
-    else:
-        # Billing OFF (undo): drop the timestamp, and clear the snapshot so the
-        # occurrence tracks the service price again — but only if this is not a
-        # deliberate manual override, which must be preserved.
-        stato.fatturato_il = None
-        if not stato.override_manuale:
-            stato.importo = None
-            stato.quantita = None
+    _imposta_fatturato(db, servizio_id, data_occorrenza, occ, fatturato=not occ.fatturato)
     db.commit()
+
+    if vista == "riepilogo":
+        contesto = _contesto_riepilogo(db, mese)
+        return templates.TemplateResponse(request, "riepilogo/_risultati.html", contesto)
 
     contesto = _contesto_risultati(db, mese, cliente, referente, stato_filtro)
     return templates.TemplateResponse(request, "dashboard/_risultati.html", contesto)
+
+
+@router.post("/fatturato-cliente")
+def fatturato_cliente(
+    request: Request,
+    cliente_id: int = Form(...),
+    mese: str | None = Form(None),
+    db: Session = Depends(get_db),
+    user: Utente = Depends(require_login),
+):
+    """
+    Mark every not-yet-billed occurrence of one customer, for the selected
+    month, as fatturato in one go (bulk version of toggle_fatturato) — the
+    "Segna tutto fatturato" button next to a customer group on the riepilogo
+    page, for when the whole month is invoiced together.
+    """
+    righe = riepilogo.occorrenze_del_mese(
+        db, periodi.parse_mese(mese), escludi_disdetti=True, cliente_id=cliente_id
+    )
+    for riga in righe:
+        if riga.occorrenza.stato_visivo == "fatturato":
+            continue
+        _imposta_fatturato(
+            db, riga.servizio.id, riga.occorrenza.data_occorrenza, riga.occorrenza, fatturato=True
+        )
+    db.commit()
+
+    contesto = _contesto_riepilogo(db, mese)
+    return templates.TemplateResponse(request, "riepilogo/_risultati.html", contesto)

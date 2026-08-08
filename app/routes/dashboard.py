@@ -17,7 +17,7 @@ from datetime import date
 from decimal import Decimal
 from urllib.parse import urlencode
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import Response
 from sqlalchemy.orm import Session
 
@@ -26,6 +26,7 @@ from app.dependencies import require_login
 from app.models.utente import Utente
 from app.services import filtri, periodi, riepilogo
 from app.services.occorrenze import ETICHETTE_STATO_CONTRATTO, stato_contratto
+from app.services.pdf import genera_pdf_cliente
 from app.templating import templates
 
 router = APIRouter()
@@ -165,6 +166,29 @@ def dashboard(
     return templates.TemplateResponse(request, template, contesto)
 
 
+def _contesto_riepilogo(db: Session, mese: str | None, cliente_id: int | None = None) -> dict:
+    """Build everything ``riepilogo/_risultati.html`` needs.
+
+    An occurrence already marked "fatturato" is dropped entirely, not just
+    greyed out: this page is "what's left to invoice", so a row must
+    disappear from it the moment it (or the equivalent toggle on the
+    dashboard) marks it billed — mirroring how billing an occurrence can drop
+    it out of the dashboard's own "da_fatturare" filter. Shared by the GET
+    route and the toggle/bulk-toggle endpoints in app/routes/servizi.py.
+    """
+    primo = periodi.parse_mese(mese)
+    righe = riepilogo.occorrenze_del_mese(
+        db, primo, escludi_disdetti=True, cliente_id=cliente_id
+    )
+    righe = [r for r in righe if r.occorrenza.stato_visivo != "fatturato"]
+    gruppi = riepilogo.raggruppa_per_cliente(righe)
+    return {
+        "nav": _navigazione_mese(primo),
+        "gruppi": gruppi,
+        "totale": riepilogo.totale_complessivo(gruppi),
+    }
+
+
 @router.get("/riepilogo")
 def riepilogo_mese(
     request: Request,
@@ -172,15 +196,15 @@ def riepilogo_mese(
     db: Session = Depends(get_db),
     user: Utente = Depends(require_login),
 ):
-    primo = periodi.parse_mese(mese)
-    righe = riepilogo.occorrenze_del_mese(db, primo, escludi_disdetti=True)
-    gruppi = riepilogo.raggruppa_per_cliente(righe)
-    totale = riepilogo.totale_complessivo(gruppi)
-    return templates.TemplateResponse(
-        request,
-        "riepilogo/index.html",
-        {"user": user, "nav": _navigazione_mese(primo), "gruppi": gruppi, "totale": totale},
+    contesto = _contesto_riepilogo(db, mese)
+    contesto["user"] = user
+
+    template = (
+        "riepilogo/_risultati.html"
+        if request.headers.get("HX-Request")
+        else "riepilogo/index.html"
     )
+    return templates.TemplateResponse(request, template, contesto)
 
 
 @router.get("/riepilogo/export")
@@ -191,6 +215,10 @@ def riepilogo_export(
 ):
     primo = periodi.parse_mese(mese)
     righe = riepilogo.occorrenze_del_mese(db, primo, escludi_disdetti=True)
+    # Same "still to invoice" scope as the riepilogo page itself (see
+    # _contesto_riepilogo): an already-billed occurrence has nothing to do in
+    # a billing-recap export.
+    righe = [r for r in righe if r.occorrenza.stato_visivo != "fatturato"]
     oggi = date.today()
 
     buffer = io.StringIO()
@@ -222,5 +250,33 @@ def riepilogo_export(
     return Response(
         content=contenuto,
         media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="{nome_file}"'},
+    )
+
+
+@router.get("/riepilogo/export/pdf")
+def riepilogo_export_pdf(
+    cliente_id: int,
+    mese: str | None = None,
+    db: Session = Depends(get_db),
+    user: Utente = Depends(require_login),
+):
+    """PDF recap of one customer's occurrences for the month — meant to be
+    handed to that customer, unlike the all-customers CSV export."""
+    primo = periodi.parse_mese(mese)
+    righe = riepilogo.occorrenze_del_mese(
+        db, primo, escludi_disdetti=True, cliente_id=cliente_id
+    )
+    righe = [r for r in righe if r.occorrenza.stato_visivo != "fatturato"]
+    gruppi = riepilogo.raggruppa_per_cliente(righe)
+    if not gruppi:
+        raise HTTPException(status_code=404, detail="Nessuna occorrenza per questo cliente nel mese selezionato")
+
+    contenuto = genera_pdf_cliente(gruppi[0], periodi.etichetta_mese(primo))
+    nome_cliente = "".join(c if c.isalnum() else "_" for c in gruppi[0].cliente.nome)
+    nome_file = f"riepilogo_{nome_cliente}_{periodi.chiave_mese(primo)}.pdf"
+    return Response(
+        content=contenuto,
+        media_type="application/pdf",
         headers={"Content-Disposition": f'attachment; filename="{nome_file}"'},
     )

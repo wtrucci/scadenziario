@@ -1,0 +1,74 @@
+{# Partial: the results region of the riepilogo page (also returned directly
+   by HTMX requests — filter/toggle-driven navigation and billing actions all
+   swap #risultati without a full page reload). Only occurrences NOT YET
+   billed are ever in "gruppi" (see dashboard._contesto_riepilogo): this page
+   is "what's left to invoice", so a row billed here or from the dashboard
+   simply disappears from it. #}
+{% if gruppi %}
+{% for g in gruppi %}
+<section class="cliente-group">
+    <h3>
+        {{ g.cliente.nome }}
+        <a class="btn btn-secondary btn-small" href="/riepilogo/export/pdf?cliente_id={{ g.cliente.id }}&mese={{ nav.chiave }}">PDF</a>
+        <button type="button" class="btn btn-secondary btn-small"
+                hx-post="/servizi/fatturato-cliente"
+                hx-target="#risultati"
+                hx-swap="innerHTML"
+                hx-vals='{"mese": "{{ nav.chiave }}", "cliente_id": {{ g.cliente.id }}}'
+                hx-confirm="Segnare come fatturate tutte le voci di {{ g.cliente.nome }} per {{ nav.etichetta }}?">
+            Segna tutto fatturato
+        </button>
+    </h3>
+    <table class="table-servizi">
+        <thead>
+            <tr>
+                <th>Descrizione</th>
+                <th>Tipo</th>
+                <th>Scadenza</th>
+                <th>Referente</th>
+                <th class="col-num">Qtà</th>
+                <th class="col-num">Importo unit.</th>
+                <th class="col-num">Totale</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for riga in g.righe %}
+            {% set s = riga.servizio %}
+            {% set occ = riga.occorrenza %}
+            <tr>
+                <td>
+                    {{ s.descrizione }}
+                    {% if occ.da_override %}<span class="badge badge-tipo" title="Importo/quantità personalizzati per questa occorrenza">override</span>{% endif %}
+                </td>
+                <td><span class="badge badge-tipo">{{ s.tipo.value }}</span></td>
+                <td class="col-data">{{ occ.data_occorrenza.strftime('%d/%m/%Y') }}</td>
+                <td>{% if s.referente %}{{ s.referente }}{% else %}<span class="muted">—</span>{% endif %}</td>
+                <td class="col-num">{{ occ.quantita }}</td>
+                <td class="col-num">{{ "%.2f"|format(occ.importo) }} {{ s.valuta }}</td>
+                <td class="col-num">{{ "%.2f"|format(occ.totale) }} {{ s.valuta }}</td>
+                <td>
+                    {% with servizio_id = s.id, data_occorrenza = occ.data_occorrenza %}
+                    {% include "riepilogo/_toggle_fatturato.html" %}
+                    {% endwith %}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+        <tfoot>
+            <tr class="subtotal-row">
+                <td colspan="6" class="col-num">Subtotale {{ g.cliente.nome }}</td>
+                <td class="col-num"><strong>{{ "%.2f"|format(g.subtotale) }}</strong></td>
+                <td></td>
+            </tr>
+        </tfoot>
+    </table>
+</section>
+{% endfor %}
+
+<div class="totale-mese">
+    Totale {{ nav.etichetta }}: <strong>{{ "%.2f"|format(totale) }}</strong>
+</div>
+{% else %}
+<p class="muted">Nessun servizio da fatturare in {{ nav.etichetta }}.</p>
+{% endif %}

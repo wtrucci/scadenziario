@@ -25,3 +25,7 @@ httpx>=0.27.0
 
 # Environment variable loading
 python-dotenv>=1.0.0
+
+# PDF export for the billing summary (pure Python, no system dependencies —
+# unlike e.g. WeasyPrint, which needs Pango/Cairo installed at the OS level).
+fpdf2>=2.7.0
