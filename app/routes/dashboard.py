@@ -89,10 +89,22 @@ def dashboard(
 
     # cliente/referente are SQL filters (service columns); the visual state is
     # filtered in Python because it is computed by the engine, not a column.
-    righe = riepilogo.occorrenze_del_mese(
+    righe_mese = riepilogo.occorrenze_del_mese(
         db, primo, cliente_id=cliente_id, referente=referente_val
     )
-    righe = riepilogo.filtra_per_stato_visivo(righe, stato_val)
+    righe = riepilogo.filtra_per_stato_visivo(righe_mese, stato_val)
+
+    # Summary card counts, computed from the cliente/referente-filtered month
+    # BEFORE the stato filter, so the cards always show the full breakdown even
+    # while the table below is narrowed to one state.
+    conteggi = {"da_fatturare": 0, "in_scadenza": 0, "fatturato": 0}
+    totale_da_fatturare = Decimal("0")
+    for riga in righe_mese:
+        stato_occ = riga.occorrenza.stato_visivo
+        if stato_occ in conteggi:
+            conteggi[stato_occ] += 1
+        if stato_occ in ("da_fatturare", "in_scadenza"):
+            totale_da_fatturare += riga.occorrenza.totale
 
     # Contract-level state (Attivo/In scadenza/Scaduto/Disdetto) is computed,
     # not a column — one lookup per distinct service, reused by the template
@@ -106,6 +118,8 @@ def dashboard(
         "user": user,
         "nav": _navigazione_mese(primo),
         "righe": righe,
+        "conteggi": conteggi,
+        "totale_da_fatturare": totale_da_fatturare,
         "stati_servizi": stati_servizi,
         "etichette_stato": ETICHETTE_STATO_CONTRATTO,
         # Querystring of active filters, appended to the month-nav links so they

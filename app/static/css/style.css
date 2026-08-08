@@ -223,7 +223,10 @@ a:hover { color: var(--primary-hover); }
 .content {
     flex: 1;
     min-width: 0;
-    max-width: 1000px;
+    /* Generous cap so wide tables (servizi/dashboard, 9+ columns) get to use
+       the screen on a normal desktop; still caps on ultra-wide monitors so
+       lines of text (forms, notes) don't stretch edge to edge. */
+    max-width: 1600px;
     margin: 2rem auto;
     padding: 0 1.5rem;
 }
@@ -290,14 +293,15 @@ table {
 }
 
 th, td {
-    padding: 0.6rem 0.9rem;
+    padding: 0.5rem 0.85rem;
     text-align: left;
     border-bottom: 1px solid var(--border);
+    font-size: 0.9rem;
 }
 
 th {
     background: var(--bg);
-    font-size: 0.82rem;
+    font-size: 0.78rem;
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.04em;
@@ -306,6 +310,12 @@ th {
 
 tbody tr:last-child td { border-bottom: none; }
 tbody tr:hover { background: var(--table-hover-bg); }
+
+/* Text hierarchy within a row: the row's "subject" (customer name) stands
+   out, secondary details (referente, cadence, date range) recede so the
+   eye lands on what matters — the amount and the status badge. */
+.cell-primary { font-weight: 600; }
+.cell-secondary { color: var(--muted); font-size: 0.85em; }
 
 .col-actions { white-space: nowrap; }
 .col-actions a,
@@ -511,6 +521,42 @@ tr.row-fatturato:hover { background: var(--row-fatturato-hover-bg) !important; }
     font-size: 1.25rem;
 }
 
+/* Dashboard summary cards: the whole month's breakdown at a glance, above the
+   table. Counts always reflect the full month (see dashboard route), so they
+   stay meaningful even while the table below is narrowed by the stato filter. */
+.summary-cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 0.75rem;
+    margin: 1rem 0 1.5rem;
+}
+
+.summary-card {
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+    padding: 0.85rem 1rem;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    border-left: 4px solid var(--border);
+}
+
+.summary-value {
+    font-size: 1.6rem;
+    font-weight: 700;
+    line-height: 1.1;
+}
+
+.summary-label {
+    font-size: 0.8rem;
+    color: var(--muted);
+}
+
+.summary-card-alert { border-left-color: var(--danger); }
+.summary-card-warn  { border-left-color: var(--badge-warn-text); }
+.summary-card-ok    { border-left-color: var(--ok-text); }
+
 /* One block per customer in the billing summary */
 .cliente-group {
     margin-bottom: 2rem;
@@ -540,21 +586,22 @@ tr.row-fatturato:hover { background: var(--row-fatturato-hover-bg) !important; }
 
 /* ------------------------------------------------------------------ Filters */
 
-/* A row of compact filter controls above a list. */
+/* A row of compact filter controls above a list. No bordered/backgrounded
+   box — just a thin separator under it — so it reads as part of the page
+   (a toolbar) rather than an isolated card whose leftover width looks
+   arbitrary next to the table below. */
 .filtri {
     display: flex;
     flex-wrap: wrap;
     align-items: flex-end;
-    gap: 1rem;
-    margin-bottom: 1.25rem;
-    padding: 1rem;
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 8px;
+    gap: 1.5rem;
+    margin-bottom: 1.5rem;
+    padding-bottom: 1rem;
+    border-bottom: 1px solid var(--border);
 }
 
-.filtri .field { margin-bottom: 0; min-width: 180px; }
-.filtri-reset { margin-left: auto; }
+.filtri .field { margin-bottom: 0; width: 200px; }
+.filtri-reset { margin-left: auto; align-self: flex-end; }
 
 /* "Fatturato" toggle button (per-occurrence, HTMX). */
 .fatturato-off { color: var(--danger); font-weight: 600; }

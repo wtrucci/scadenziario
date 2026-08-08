@@ -3,17 +3,17 @@
    (effective end date, rolled forward if rinnovo_automatico is set), stato_s
    (computed contract state), etichette_stato (state -> label). #}
 <tr id="servizio-{{ s.id }}">
-    <td>{{ s.cliente.nome }}</td>
-    <td>{% if s.referente %}{{ s.referente }}{% else %}<span class="muted">—</span>{% endif %}</td>
+    <td class="cell-primary">{{ s.cliente.nome }}</td>
+    <td class="cell-secondary">{% if s.referente %}{{ s.referente }}{% else %}—{% endif %}</td>
     <td>{{ s.descrizione }}</td>
     <td><span class="badge badge-tipo">{{ s.tipo.value }}</span></td>
-    <td class="col-data">
+    <td class="col-data cell-secondary">
         {{ s.data_inizio.strftime('%d/%m/%Y') }} – {{ data_fine_eff.strftime('%d/%m/%Y') }}
         {% if s.rinnovo_automatico %}
         <span class="badge badge-tipo" title="Si rinnova automaticamente di {{ s.durata_mesi }} mesi alla scadenza">↻ auto</span>
         {% endif %}
     </td>
-    <td>{{ cadenza }}</td>
+    <td class="cell-secondary">{{ cadenza }}</td>
     <td class="col-num">{{ s.quantita }}</td>
     <td class="col-num">{{ "%.2f"|format(s.importo) }} {{ s.valuta }}</td>
     <td class="col-num"><strong>{{ "%.2f"|format(s.totale) }} {{ s.valuta }}</strong></td>

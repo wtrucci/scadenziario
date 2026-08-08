@@ -1,11 +1,32 @@
 {# Results region swapped by HTMX on filter changes; also included by the full
    page. Contains the month navigation (so its links pick up the active filters
-   after a swap), the heading and the occurrences table.
-   Context: nav, filtri_qs, righe (list of RigaOccorrenza), stati_servizi
-   (servizio.id -> computed contract state), etichette_stato (state -> label). #}
+   after a swap), the summary cards, the heading and the occurrences table.
+   Context: nav, filtri_qs, righe (list of RigaOccorrenza), conteggi (state ->
+   count, whole month regardless of the stato filter), totale_da_fatturare,
+   stati_servizi (servizio.id -> computed contract state), etichette_stato
+   (state -> label). #}
 {% with base_url = "/" %}
 {% include "partials/_navigazione_mese.html" %}
 {% endwith %}
+
+<div class="summary-cards">
+    <div class="summary-card summary-card-alert">
+        <span class="summary-value">{{ conteggi.da_fatturare }}</span>
+        <span class="summary-label">Da fatturare</span>
+    </div>
+    <div class="summary-card summary-card-warn">
+        <span class="summary-value">{{ conteggi.in_scadenza }}</span>
+        <span class="summary-label">In scadenza</span>
+    </div>
+    <div class="summary-card summary-card-ok">
+        <span class="summary-value">{{ conteggi.fatturato }}</span>
+        <span class="summary-label">Fatturato</span>
+    </div>
+    <div class="summary-card">
+        <span class="summary-value">{{ "%.2f"|format(totale_da_fatturare) }}</span>
+        <span class="summary-label">Totale da fatturare</span>
+    </div>
+</div>
 
 <h2 class="month-heading">{{ nav.etichetta }}</h2>
 
@@ -30,8 +51,8 @@
         {% set occ = riga.occorrenza %}
         {% set rowcls = {"da_fatturare": "row-da-fatturare", "in_scadenza": "row-in-scadenza", "fatturato": "row-fatturato"}.get(occ.stato_visivo, "") %}
         <tr class="{{ rowcls }}">
-            <td>{{ s.cliente.nome }}</td>
-            <td>{% if s.referente %}{{ s.referente }}{% else %}<span class="muted">—</span>{% endif %}</td>
+            <td class="cell-primary">{{ s.cliente.nome }}</td>
+            <td class="cell-secondary">{% if s.referente %}{{ s.referente }}{% else %}—{% endif %}</td>
             <td>{{ s.descrizione }}</td>
             <td class="col-data">
                 {{ occ.data_occorrenza.strftime('%d/%m/%Y') }}
