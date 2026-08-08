@@ -102,16 +102,7 @@ body {
 a { color: var(--primary); }
 a:hover { color: var(--primary-hover); }
 
-/* ------------------------------------------------------------------ Topbar */
-
-.topbar {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 0.6rem 1.5rem;
-    background: var(--surface);
-    border-bottom: 1px solid var(--border);
-}
+/* ------------------------------------------------------------------ Sidebar */
 
 .brand {
     font-weight: 700;
@@ -120,23 +111,18 @@ a:hover { color: var(--primary-hover); }
     text-decoration: none;
 }
 
-.topbar-right {
-    display: flex;
-    align-items: center;
-    gap: 1rem;
-}
-
-.topbar-nav {
-    display: flex;
-    align-items: center;
-    gap: 1rem;
-    font-size: 0.9rem;
-}
-
-.nav-sep { color: var(--border); }
 .nav-user { color: var(--muted); }
 
-/* Light/dark theme toggle (icon-only button, top right). */
+/* Inline SVG icons (sidebar nav + theme toggle) — no icon font/library. */
+.icon {
+    width: 18px;
+    height: 18px;
+    flex-shrink: 0;
+}
+
+/* Light/dark theme toggle (icon-only button). Both icons are always in the
+   DOM; only the one matching the CURRENT theme is shown, i.e. the icon
+   represents "this is the active mode", not "click to switch to this". */
 .theme-toggle {
     display: inline-flex;
     align-items: center;
@@ -147,17 +133,96 @@ a:hover { color: var(--primary-hover); }
     background: none;
     border: 1px solid var(--border);
     border-radius: 6px;
-    font-size: 1.05rem;
-    line-height: 1;
     cursor: pointer;
     color: var(--text);
 }
 
 .theme-toggle:hover { background: var(--bg); }
 
+.theme-toggle .icon-moon { display: none; }
+:root[data-theme="dark"] .theme-toggle .icon-sun { display: none; }
+:root[data-theme="dark"] .theme-toggle .icon-moon { display: inline-block; }
+
+.app-shell {
+    display: flex;
+    align-items: flex-start;
+    min-height: 100vh;
+}
+
+.sidebar {
+    width: 220px;
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+    min-height: 100vh;
+    padding: 1.25rem 1rem;
+    background: var(--surface);
+    border-right: 1px solid var(--border);
+}
+
+.sidebar-nav {
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+    flex: 1;
+}
+
+.sidebar-nav a {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    padding: 0.55rem 0.75rem;
+    border-radius: 6px;
+    color: var(--text);
+    text-decoration: none;
+    font-size: 0.92rem;
+}
+
+.sidebar-nav a:hover { background: var(--bg); }
+
+.sidebar-nav a.active {
+    background: var(--badge-tipo-bg);
+    color: var(--badge-tipo-text);
+    font-weight: 600;
+}
+
+.sidebar-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    padding-top: 1rem;
+    border-top: 1px solid var(--border);
+}
+
+.sidebar-user {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    font-size: 0.85rem;
+}
+
+@media (max-width: 720px) {
+    .app-shell { flex-direction: column; }
+    .sidebar {
+        width: 100%;
+        min-height: auto;
+        flex-direction: row;
+        flex-wrap: wrap;
+        align-items: center;
+        border-right: none;
+        border-bottom: 1px solid var(--border);
+    }
+    .sidebar-nav { flex-direction: row; overflow-x: auto; }
+    .sidebar-footer { border-top: none; padding-top: 0; }
+}
+
 /* ------------------------------------------------------------------ Layout */
 
 .content {
+    flex: 1;
+    min-width: 0;
     max-width: 1000px;
     margin: 2rem auto;
     padding: 0 1.5rem;

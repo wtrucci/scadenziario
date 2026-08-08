@@ -24,26 +24,47 @@
     <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
 </head>
 <body>
-    <header class="topbar">
-        <a class="brand" href="/">Scadenziario</a>
-        <div class="topbar-right">
+    <div class="app-shell">
+        <aside class="sidebar">
+            <a class="brand" href="/">Scadenziario</a>
             {% if user is defined and user %}
-            <nav class="topbar-nav">
-                <a href="/">Dashboard</a>
-                <a href="/clienti">Clienti</a>
-                <a href="/servizi">Servizi</a>
-                <span class="nav-sep">|</span>
-                <span class="nav-user">{{ user.username }}</span>
-                <a href="/logout">Esci</a>
+            <nav class="sidebar-nav">
+                <a href="/" class="{{ 'active' if request.url.path == '/' else '' }}">
+                    <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+                    Dashboard
+                </a>
+                <a href="/servizi" class="{{ 'active' if request.url.path.startswith('/servizi') else '' }}">
+                    <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+                    Servizi
+                </a>
+                <a href="/clienti" class="{{ 'active' if request.url.path.startswith('/clienti') else '' }}">
+                    <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                    Clienti
+                </a>
+                <a href="/riepilogo" class="{{ 'active' if request.url.path.startswith('/riepilogo') else '' }}">
+                    <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+                    Riepilogo da fatturare
+                </a>
             </nav>
             {% endif %}
-            <button id="theme-toggle" class="theme-toggle" type="button"
-                    title="Cambia tema chiaro/scuro" aria-label="Cambia tema chiaro/scuro"></button>
-        </div>
-    </header>
-    <main class="content">
-        {% block content %}{% endblock %}
-    </main>
+            <div class="sidebar-footer">
+                <button id="theme-toggle" class="theme-toggle" type="button"
+                        title="Cambia tema chiaro/scuro" aria-label="Cambia tema chiaro/scuro">
+                    <svg class="icon icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>
+                    <svg class="icon icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+                </button>
+                {% if user is defined and user %}
+                <div class="sidebar-user">
+                    <span class="nav-user">{{ user.username }}</span>
+                    <a href="/logout">Esci</a>
+                </div>
+                {% endif %}
+            </div>
+        </aside>
+        <main class="content">
+            {% block content %}{% endblock %}
+        </main>
+    </div>
     <script>
         // Init flatpickr on every .date-picker input, in the current page and
         // in anything HTMX swaps in later (e.g. a form loaded into a fragment).
@@ -56,21 +77,21 @@
         document.addEventListener("htmx:afterSwap", function (e) { initDatePickers(e.target); });
 
         // Light/dark theme toggle. The initial data-theme attribute is set
-        // synchronously in <head> (see above) to avoid a flash on load; this
-        // just keeps the icon in sync and handles the click.
-        function syncThemeToggleIcon() {
+        // synchronously in <head> (see above) to avoid a flash on load. The
+        // sun/moon icon swap is pure CSS (see .icon-sun/.icon-moon); this only
+        // keeps the title in sync and handles the click.
+        function syncThemeToggleTitle() {
             var btn = document.getElementById("theme-toggle");
             var isDark = document.documentElement.getAttribute("data-theme") === "dark";
-            btn.textContent = isDark ? "☀️" : "🌙";
             btn.title = isDark ? "Passa al tema chiaro" : "Passa al tema scuro";
         }
         document.addEventListener("DOMContentLoaded", function () {
-            syncThemeToggleIcon();
+            syncThemeToggleTitle();
             document.getElementById("theme-toggle").addEventListener("click", function () {
                 var next = document.documentElement.getAttribute("data-theme") === "dark" ? "light" : "dark";
                 document.documentElement.setAttribute("data-theme", next);
                 localStorage.setItem("theme", next);
-                syncThemeToggleIcon();
+                syncThemeToggleTitle();
             });
         });
     </script>
