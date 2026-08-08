@@ -55,8 +55,23 @@ docker compose up --build
 L'applicazione parte su `http://localhost:8000`. Al primo avvio vengono
 applicate automaticamente tutte le migrazioni del database e viene creato
 l'utente admin definito in `.env` (`FIRST_ADMIN_USERNAME` /
-`FIRST_ADMIN_PASSWORD`). Il database SQLite persiste nel volume Docker
-`scadenziario-data` tra un riavvio e l'altro del container.
+`FIRST_ADMIN_PASSWORD`).
+
+### Dove viene salvato il database
+
+`docker-compose.yml` monta la cartella **`./data`**, accanto al file
+`docker-compose.yml` stesso, dentro il container (`/app/data`): è lì che
+finisce il file SQLite (`data/scadenziario.db`), non in un volume Docker
+"nascosto". Vantaggi pratici:
+
+- il backup è copiare la cartella `data/` (l'app va fermata prima, per
+  evitare di copiare il file mentre SQLite ci scrive);
+- il database resta a disposizione anche rimuovendo il container
+  (`docker compose down`) o l'immagine;
+- `data/` è già esclusa da Git (vedi `.gitignore`), quindi non c'è rischio
+  di versionare per sbaglio dati reali dei clienti.
+
+La cartella viene creata automaticamente al primo avvio se non esiste già.
 
 ### Immagine già pronta (GitHub Container Registry)
 
@@ -72,9 +87,15 @@ docker pull ghcr.io/wtrucci/scadenziario:0.1.0
 ```
 
 Va poi eseguita passando le stesse variabili d'ambiente di `.env.example`
-(es. `docker run --env-file .env -p 8000:8000 -v scadenziario-data:/app/data
-ghcr.io/wtrucci/scadenziario:latest`), oppure sostituendo `build: .` con
-`image: ghcr.io/wtrucci/scadenziario:latest` in `docker-compose.yml`.
+e montando una cartella locale per i dati, ad esempio:
+
+```bash
+docker run --env-file .env -p 8000:8000 -v ./data:/app/data \
+  ghcr.io/wtrucci/scadenziario:latest
+```
+
+oppure sostituendo `build: .` con `image: ghcr.io/wtrucci/scadenziario:latest`
+in `docker-compose.yml` (il mount di `./data` resta invariato).
 
 > Nota: la prima volta che il workflow pubblica un'immagine, il pacchetto su
 > GitHub va reso pubblico manualmente (Package → Package settings →

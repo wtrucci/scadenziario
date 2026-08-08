@@ -10,7 +10,6 @@ services:
       # Path inside the container; must match the "data" volume mount below.
       DATABASE_URL: sqlite:///./data/scadenziario.db
     volumes:
-      - scadenziario-data:/app/data
-
-volumes:
-  scadenziario-data:
+      # Bind mount, not a named volume: the SQLite file lands in ./data next
+      # to this docker-compose.yml, in plain sight for backup/inspection.
+      - ./data:/app/data
