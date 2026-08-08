@@ -3,48 +3,62 @@
 {% block title %}Servizi — Scadenziario{% endblock %}
 
 {% block content %}
+{% set filtri_attivi = filtri.cliente or filtri.referente or filtri.stato %}
 <div class="page-header">
-    <h1>Servizi</h1>
-    <a class="btn" href="/servizi/nuovo">+ Nuovo servizio</a>
+    <h1>
+        Servizi
+        <button type="button" class="icon-btn" title="Filtri" aria-label="Apri filtri"
+                onclick="document.getElementById('filtri-dialog').showModal()">
+            <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
+            <span id="filtri-badge">{% if filtri_attivi %}<span class="icon-btn-badge"></span>{% endif %}</span>
+        </button>
+    </h1>
+    <div class="page-header-actions">
+        <span id="filtri-reset">{% if filtri_attivi %}<a class="btn btn-secondary" href="/servizi">Azzera filtri</a>{% endif %}</span>
+        <a class="btn" href="/servizi/nuovo">+ Nuovo servizio</a>
+    </div>
 </div>
 
-{# Filter form. Changing any control issues an HTMX GET that swaps only the
-   results region and pushes the URL (so it stays bookmarkable). Controls are
-   pre-populated from the current filter values, so a bookmarked filtered URL
-   shows the right state. On servizi the state filter uses the service's own
-   status (attivo/scaduto/...). #}
-<form class="filtri" hx-get="/servizi" hx-target="#risultati" hx-push-url="true" hx-trigger="change">
-    <div class="field">
-        <label for="f-cliente">Cliente</label>
-        <select id="f-cliente" name="cliente">
-            <option value="">Tutti</option>
-            {% for c in clienti %}
-            <option value="{{ c.id }}" {% if filtri.cliente == c.id %}selected{% endif %}>{{ c.nome }}</option>
-            {% endfor %}
-        </select>
+{# Filter dialog (native <dialog>, opened by the funnel icon above). Changing
+   any control issues an HTMX GET that swaps only the results region and
+   pushes the URL (so it stays bookmarkable); base.html closes the dialog once
+   that request lands. Controls are pre-populated from the current filter
+   values, so a bookmarked filtered URL shows the right state. On servizi the
+   state filter uses the service's own status (attivo/scaduto/...). #}
+<dialog id="filtri-dialog" class="filtri-dialog">
+    <form class="filtri" hx-get="/servizi" hx-target="#risultati" hx-push-url="true" hx-trigger="change">
+        <div class="field">
+            <label for="f-cliente">Cliente</label>
+            <select id="f-cliente" name="cliente">
+                <option value="">Tutti</option>
+                {% for c in clienti %}
+                <option value="{{ c.id }}" {% if filtri.cliente == c.id %}selected{% endif %}>{{ c.nome }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="field">
+            <label for="f-referente">Referente</label>
+            <select id="f-referente" name="referente">
+                <option value="">Tutti</option>
+                {% for r in referenti %}
+                <option value="{{ r }}" {% if filtri.referente == r %}selected{% endif %}>{{ r }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="field">
+            <label for="f-stato">Stato servizio</label>
+            <select id="f-stato" name="stato">
+                <option value="">Tutti</option>
+                {% for st in stati %}
+                <option value="{{ st }}" {% if filtri.stato == st %}selected{% endif %}>{{ etichette_stato[st] }}</option>
+                {% endfor %}
+            </select>
+        </div>
+    </form>
+    <div class="filtri-dialog-actions">
+        <button type="button" class="btn btn-secondary" onclick="document.getElementById('filtri-dialog').close()">Chiudi</button>
     </div>
-    <div class="field">
-        <label for="f-referente">Referente</label>
-        <select id="f-referente" name="referente">
-            <option value="">Tutti</option>
-            {% for r in referenti %}
-            <option value="{{ r }}" {% if filtri.referente == r %}selected{% endif %}>{{ r }}</option>
-            {% endfor %}
-        </select>
-    </div>
-    <div class="field">
-        <label for="f-stato">Stato servizio</label>
-        <select id="f-stato" name="stato">
-            <option value="">Tutti</option>
-            {% for st in stati %}
-            <option value="{{ st }}" {% if filtri.stato == st %}selected{% endif %}>{{ etichette_stato[st] }}</option>
-            {% endfor %}
-        </select>
-    </div>
-    {% if filtri.cliente or filtri.referente or filtri.stato %}
-    <a class="btn btn-secondary filtri-reset" href="/servizi">Azzera filtri</a>
-    {% endif %}
-</form>
+</dialog>
 
 <div id="risultati">
     {% include "servizi/_risultati.html" %}

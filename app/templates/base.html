@@ -76,6 +76,15 @@
         document.addEventListener("DOMContentLoaded", function () { initDatePickers(document); });
         document.addEventListener("htmx:afterSwap", function (e) { initDatePickers(e.target); });
 
+        // Filter dialogs (funnel icon next to the page title): picking a
+        // filter already triggers the HTMX request via hx-trigger="change" on
+        // the form: this just closes the dialog afterwards so the (already
+        // updating) results are immediately visible.
+        document.addEventListener("change", function (e) {
+            var dialog = e.target.closest("dialog.filtri-dialog");
+            if (dialog) dialog.close();
+        });
+
         // Light/dark theme toggle. The initial data-theme attribute is set
         // synchronously in <head> (see above) to avoid a flash on load. The
         // sun/moon icon swap is pure CSS (see .icon-sun/.icon-moon); this only

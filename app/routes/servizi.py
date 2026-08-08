@@ -25,6 +25,7 @@ from app.models.enums import TipoServizio
 from app.models.override_importo import OverrideImporto
 from app.models.servizio import Servizio
 from app.models.utente import Utente
+from app.routes.dashboard import _contesto_risultati
 from app.services import filtri
 from app.services.occorrenze import (
     ETICHETTE_STATO_CONTRATTO,
@@ -478,6 +479,10 @@ def toggle_fatturato(
     request: Request,
     servizio_id: int,
     data_occorrenza: date,
+    mese: str | None = Form(None),
+    cliente: str | None = Form(None),
+    referente: str | None = Form(None),
+    stato_filtro: str | None = Form(None, alias="stato"),
     db: Session = Depends(get_db),
     user: Utente = Depends(require_login),
 ):
@@ -492,7 +497,13 @@ def toggle_fatturato(
     effective price/quantity (override-aware) into the row, so a later change to
     the service price does not alter what was already billed. On un-billing we
     clear that snapshot ONLY if it was not a deliberate manual override.
-    Returns the refreshed toggle button partial.
+
+    The toggle button is only used on the dashboard (see
+    servizi/_toggle_fatturato.html), which sends the currently active month and
+    filters along (hx-vals/hx-include). We re-render the whole results region
+    with them — not just the button — because the new fatturato state can (a)
+    change the summary card counts and (b) make the row itself disappear from
+    an active stato filter (e.g. filtering "Da fatturare" and billing it).
     """
     s = _get_or_404(db, servizio_id)
 
@@ -530,12 +541,5 @@ def toggle_fatturato(
             stato.quantita = None
     db.commit()
 
-    return templates.TemplateResponse(
-        request,
-        "servizi/_toggle_fatturato.html",
-        {
-            "servizio_id": servizio_id,
-            "data_occorrenza": data_occorrenza,
-            "fatturato": stato.fatturato,
-        },
-    )
+    contesto = _contesto_risultati(db, mese, cliente, referente, stato_filtro)
+    return templates.TemplateResponse(request, "dashboard/_risultati.html", contesto)

@@ -70,16 +70,21 @@ def _decimale_it(valore: Decimal) -> str:
     return f"{valore:.2f}".replace(".", ",")
 
 
-@router.get("/")
-def dashboard(
-    request: Request,
-    mese: str | None = None,
-    cliente: str | None = None,
-    referente: str | None = None,
-    stato: str | None = None,
-    db: Session = Depends(get_db),
-    user: Utente = Depends(require_login),
-):
+def _contesto_risultati(
+    db: Session,
+    mese: str | None,
+    cliente: str | None,
+    referente: str | None,
+    stato: str | None,
+) -> dict:
+    """Build everything ``dashboard/_risultati.html`` needs: month nav, table
+    rows, summary cards and the active-filter values.
+
+    Shared by the dashboard route and the "fatturato" toggle endpoint (see
+    app/routes/servizi.py) — toggling an occurrence can change which rows
+    match the active stato filter and always changes the summary counts, so
+    that endpoint re-renders this same region instead of only the button.
+    """
     primo = periodi.parse_mese(mese)
 
     # Normalise the raw query params into typed/validated filter values.
@@ -114,8 +119,7 @@ def dashboard(
         riga.servizio.id: stato_contratto(riga.servizio, oggi=oggi) for riga in righe
     }
 
-    contesto = {
-        "user": user,
+    return {
         "nav": _navigazione_mese(primo),
         "righe": righe,
         "conteggi": conteggi,
@@ -131,10 +135,24 @@ def dashboard(
             "referente": referente_val or "",
             "stato": stato_val or "",
         },
-        "clienti": filtri.clienti_disponibili(db),
-        "referenti": filtri.referenti_disponibili(db),
-        "stati_occorrenza": STATI_OCCORRENZA_FILTRABILI,
     }
+
+
+@router.get("/")
+def dashboard(
+    request: Request,
+    mese: str | None = None,
+    cliente: str | None = None,
+    referente: str | None = None,
+    stato: str | None = None,
+    db: Session = Depends(get_db),
+    user: Utente = Depends(require_login),
+):
+    contesto = _contesto_risultati(db, mese, cliente, referente, stato)
+    contesto["user"] = user
+    contesto["clienti"] = filtri.clienti_disponibili(db)
+    contesto["referenti"] = filtri.referenti_disponibili(db)
+    contesto["stati_occorrenza"] = STATI_OCCORRENZA_FILTRABILI
 
     # HTMX request (filter change): swap only the results region. A normal page
     # load or a bookmarked URL gets the whole page, with filters already applied

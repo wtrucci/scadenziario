@@ -3,51 +3,65 @@
 {% block title %}Dashboard — Scadenziario{% endblock %}
 
 {% block content %}
+{% set filtri_attivi = filtri.cliente or filtri.referente or filtri.stato %}
 <div class="page-header">
-    <h1>Scadenze del mese</h1>
-    <a class="btn btn-secondary" href="/riepilogo?mese={{ nav.chiave }}">Riepilogo da fatturare →</a>
+    <h1>
+        Scadenze del mese
+        <button type="button" class="icon-btn" title="Filtri" aria-label="Apri filtri"
+                onclick="document.getElementById('filtri-dialog').showModal()">
+            <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
+            <span id="filtri-badge">{% if filtri_attivi %}<span class="icon-btn-badge"></span>{% endif %}</span>
+        </button>
+    </h1>
+    <div class="page-header-actions">
+        <span id="filtri-reset">{% if filtri_attivi %}<a class="btn btn-secondary" href="/?mese={{ nav.chiave }}">Azzera filtri</a>{% endif %}</span>
+        <a class="btn btn-secondary" href="/riepilogo?mese={{ nav.chiave }}">Riepilogo da fatturare →</a>
+    </div>
 </div>
 
-{# Filter form. Changing any control issues an HTMX GET that swaps only the
-   results region and pushes the URL (so it stays bookmarkable). The hidden
-   "mese" keeps the selected month when filtering. Controls are pre-populated
-   from the current filter values, so a bookmarked filtered URL shows the right
-   state. #}
-<form class="filtri" hx-get="/" hx-target="#risultati" hx-push-url="true" hx-trigger="change">
-    <input type="hidden" name="mese" value="{{ nav.chiave }}">
-    <div class="field">
-        <label for="f-cliente">Cliente</label>
-        <select id="f-cliente" name="cliente">
-            <option value="">Tutti</option>
-            {% for c in clienti %}
-            <option value="{{ c.id }}" {% if filtri.cliente == c.id %}selected{% endif %}>{{ c.nome }}</option>
-            {% endfor %}
-        </select>
+{# Filter dialog (native <dialog>, opened by the funnel icon above). Changing
+   any control issues an HTMX GET that swaps only the results region and
+   pushes the URL (so it stays bookmarkable); base.html closes the dialog once
+   that request lands. The hidden "mese" keeps the selected month when
+   filtering. Controls are pre-populated from the current filter values, so a
+   bookmarked filtered URL shows the right state. #}
+<dialog id="filtri-dialog" class="filtri-dialog">
+    <form class="filtri" hx-get="/" hx-target="#risultati" hx-push-url="true" hx-trigger="change">
+        <input type="hidden" name="mese" value="{{ nav.chiave }}">
+        <div class="field">
+            <label for="f-cliente">Cliente</label>
+            <select id="f-cliente" name="cliente">
+                <option value="">Tutti</option>
+                {% for c in clienti %}
+                <option value="{{ c.id }}" {% if filtri.cliente == c.id %}selected{% endif %}>{{ c.nome }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="field">
+            <label for="f-referente">Referente</label>
+            <select id="f-referente" name="referente">
+                <option value="">Tutti</option>
+                {% for r in referenti %}
+                <option value="{{ r }}" {% if filtri.referente == r %}selected{% endif %}>{{ r }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="field">
+            <label for="f-stato">Stato occorrenza</label>
+            <select id="f-stato" name="stato">
+                <option value="">Tutti</option>
+                {% for st in stati_occorrenza %}
+                <option value="{{ st }}" {% if filtri.stato == st %}selected{% endif %}>
+                    {{ {"da_fatturare": "Da fatturare", "in_scadenza": "In scadenza", "fatturato": "Fatturato"}[st] }}
+                </option>
+                {% endfor %}
+            </select>
+        </div>
+    </form>
+    <div class="filtri-dialog-actions">
+        <button type="button" class="btn btn-secondary" onclick="document.getElementById('filtri-dialog').close()">Chiudi</button>
     </div>
-    <div class="field">
-        <label for="f-referente">Referente</label>
-        <select id="f-referente" name="referente">
-            <option value="">Tutti</option>
-            {% for r in referenti %}
-            <option value="{{ r }}" {% if filtri.referente == r %}selected{% endif %}>{{ r }}</option>
-            {% endfor %}
-        </select>
-    </div>
-    <div class="field">
-        <label for="f-stato">Stato occorrenza</label>
-        <select id="f-stato" name="stato">
-            <option value="">Tutti</option>
-            {% for st in stati_occorrenza %}
-            <option value="{{ st }}" {% if filtri.stato == st %}selected{% endif %}>
-                {{ {"da_fatturare": "Da fatturare", "in_scadenza": "In scadenza", "fatturato": "Fatturato"}[st] }}
-            </option>
-            {% endfor %}
-        </select>
-    </div>
-    {% if filtri.cliente or filtri.referente or filtri.stato %}
-    <a class="btn btn-secondary filtri-reset" href="/?mese={{ nav.chiave }}">Azzera filtri</a>
-    {% endif %}
-</form>
+</dialog>
 
 <div id="risultati">
     {% include "dashboard/_risultati.html" %}

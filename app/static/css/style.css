@@ -192,6 +192,9 @@ a:hover { color: var(--primary-hover); }
     align-items: center;
     justify-content: space-between;
     gap: 0.75rem;
+    /* Sticks to the bottom of the sidebar even without .sidebar-nav's flex:1
+       spacer above it (logged-out state has no nav, e.g. the login page). */
+    margin-top: auto;
     padding-top: 1rem;
     border-top: 1px solid var(--border);
 }
@@ -215,7 +218,7 @@ a:hover { color: var(--primary-hover); }
         border-bottom: 1px solid var(--border);
     }
     .sidebar-nav { flex-direction: row; overflow-x: auto; }
-    .sidebar-footer { border-top: none; padding-top: 0; }
+    .sidebar-footer { margin-top: 0; border-top: none; padding-top: 0; }
 }
 
 /* ------------------------------------------------------------------ Layout */
@@ -238,7 +241,66 @@ a:hover { color: var(--primary-hover); }
     margin-bottom: 1.25rem;
 }
 
-.page-header h1 { margin: 0; }
+.page-header h1 {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    margin: 0;
+}
+
+.page-header-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+/* Icon-only button (funnel, ...) inline with a heading. */
+.icon-btn {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.9rem;
+    height: 1.9rem;
+    padding: 0;
+    background: none;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    cursor: pointer;
+    color: var(--muted);
+}
+
+.icon-btn:hover { background: var(--bg); color: var(--text); }
+
+.icon-btn-badge {
+    position: absolute;
+    top: -3px;
+    right: -3px;
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    background: var(--primary);
+    border: 2px solid var(--surface);
+}
+
+/* Filter dialog: native <dialog>, opened by the funnel icon. The browser
+   handles the backdrop, centering and Esc-to-close for free. */
+dialog.filtri-dialog {
+    width: 100%;
+    max-width: 380px;
+    padding: 1.5rem;
+    background: var(--surface);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.25);
+}
+
+dialog.filtri-dialog::backdrop { background: rgba(0, 0, 0, 0.5); }
+
+.filtri-dialog .filtri { flex-direction: column; align-items: stretch; gap: 1rem; }
+.filtri-dialog .field { width: 100%; }
+.filtri-dialog-actions { display: flex; justify-content: flex-end; margin-top: 1.25rem; }
 
 .muted { color: var(--muted); }
 
@@ -586,22 +648,11 @@ tr.row-fatturato:hover { background: var(--row-fatturato-hover-bg) !important; }
 
 /* ------------------------------------------------------------------ Filters */
 
-/* A row of compact filter controls above a list. No bordered/backgrounded
-   box — just a thin separator under it — so it reads as part of the page
-   (a toolbar) rather than an isolated card whose leftover width looks
-   arbitrary next to the table below. */
-.filtri {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: flex-end;
-    gap: 1.5rem;
-    margin-bottom: 1.5rem;
-    padding-bottom: 1rem;
-    border-bottom: 1px solid var(--border);
-}
-
-.filtri .field { margin-bottom: 0; width: 200px; }
-.filtri-reset { margin-left: auto; align-self: flex-end; }
+/* The filter controls themselves — lives inside .filtri-dialog (see the
+   Layout section above), reached via the funnel icon next to the page
+   title instead of sitting in a permanent toolbar/card on the page. */
+.filtri { display: flex; flex-wrap: wrap; gap: 1rem; }
+.filtri .field { margin-bottom: 0; }
 
 /* "Fatturato" toggle button (per-occurrence, HTMX). */
 .fatturato-off { color: var(--danger); font-weight: 600; }
