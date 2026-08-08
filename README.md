@@ -67,6 +67,8 @@ Per usarla senza clonare il repository:
 
 ```bash
 docker pull ghcr.io/wtrucci/scadenziario:latest
+# oppure una versione specifica (il tag Docker non ha il prefisso "v"):
+docker pull ghcr.io/wtrucci/scadenziario:0.1.0
 ```
 
 Va poi eseguita passando le stesse variabili d'ambiente di `.env.example`
