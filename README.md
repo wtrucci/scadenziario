@@ -42,20 +42,50 @@ finali.
 - **Notifiche**: Telegram Bot API, scheduler interno APScheduler
 - **PDF**: fpdf2 (Python puro, nessuna dipendenza di sistema)
 
-## Avvio con Docker (consigliato)
+## Avvio con Docker Compose (consigliato)
 
-Richiede Docker e Docker Compose.
+Richiede Docker e Docker Compose. `docker-compose.yml` è già configurato
+per usare l'immagine pubblicata su GitHub Container Registry
+(`ghcr.io/wtrucci/scadenziario`): non serve clonare il repository né
+buildare nulla in locale.
+
+**1. Scarica i due file necessari** (bastano questi, non serve il resto del
+repository):
+
+```bash
+mkdir scadenziario && cd scadenziario
+curl -O https://raw.githubusercontent.com/wtrucci/scadenziario/master/docker-compose.yml
+curl -O https://raw.githubusercontent.com/wtrucci/scadenziario/master/.env.example
+```
+
+**2. Crea il file `.env`** a partire dall'esempio e compilalo con i tuoi
+valori (almeno `SECRET_KEY`; `TELEGRAM_BOT_TOKEN`/`TELEGRAM_CHAT_ID` se
+vuoi le notifiche; `FIRST_ADMIN_USERNAME`/`FIRST_ADMIN_PASSWORD` per il
+primo accesso):
 
 ```bash
 cp .env.example .env
-# modifica .env: SECRET_KEY, credenziali Telegram, primo utente admin
-docker compose up --build
+nano .env   # o l'editor che preferisci
 ```
 
-L'applicazione parte su `http://localhost:8000`. Al primo avvio vengono
-applicate automaticamente tutte le migrazioni del database e viene creato
-l'utente admin definito in `.env` (`FIRST_ADMIN_USERNAME` /
-`FIRST_ADMIN_PASSWORD`).
+**3. Avvia**:
+
+```bash
+docker compose up -d
+```
+
+La prima volta scarica l'immagine da GitHub Container Registry, crea la
+cartella `data/` per il database e crea l'utente admin definito in `.env`.
+L'app è raggiungibile su `http://localhost:8000`.
+
+**4. Comandi utili**:
+
+```bash
+docker compose logs -f       # segui i log
+docker compose pull          # scarica l'ultima immagine pubblicata
+docker compose up -d         # riavvia usando l'immagine appena scaricata
+docker compose down          # ferma e rimuove il container (i dati restano in ./data)
+```
 
 ### Dove viene salvato il database
 
@@ -73,29 +103,29 @@ finisce il file SQLite (`data/scadenziario.db`), non in un volume Docker
 
 La cartella viene creata automaticamente al primo avvio se non esiste già.
 
-### Immagine già pronta (GitHub Container Registry)
+### Sviluppo: buildare l'immagine in locale invece di scaricarla
+
+Se hai clonato l'intero repository e vuoi testare le tue modifiche (invece
+di usare l'immagine pubblicata), `docker-compose.yml` include anche
+`build: .`: basta aggiungere `--build` per far buildare Compose in locale
+invece di scaricare da GitHub Container Registry:
+
+```bash
+docker compose up -d --build
+```
+
+### Immagine pubblicata (dettagli)
 
 Ad ogni push su `master` e ad ogni tag di versione (`vX.Y.Z`), un workflow
 GitHub Actions (`.github/workflows/docker-publish.yml`) builda l'immagine e
 la pubblica su GitHub Container Registry — non serve un account Docker Hub.
-Per usarla senza clonare il repository:
+Tag disponibili:
 
 ```bash
 docker pull ghcr.io/wtrucci/scadenziario:latest
 # oppure una versione specifica (il tag Docker non ha il prefisso "v"):
 docker pull ghcr.io/wtrucci/scadenziario:0.1.0
 ```
-
-Va poi eseguita passando le stesse variabili d'ambiente di `.env.example`
-e montando una cartella locale per i dati, ad esempio:
-
-```bash
-docker run --env-file .env -p 8000:8000 -v ./data:/app/data \
-  ghcr.io/wtrucci/scadenziario:latest
-```
-
-oppure sostituendo `build: .` con `image: ghcr.io/wtrucci/scadenziario:latest`
-in `docker-compose.yml` (il mount di `./data` resta invariato).
 
 > Nota: la prima volta che il workflow pubblica un'immagine, il pacchetto su
 > GitHub va reso pubblico manualmente (Package → Package settings →

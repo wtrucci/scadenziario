@@ -1,5 +1,11 @@
 services:
   scadenziario:
+    # "image" is the published GitHub Container Registry build: plain
+    # "docker compose up" pulls it, no local build needed. "build" is only
+    # used when explicitly asked for with "docker compose up --build" (e.g.
+    # when developing from a clone of this repo) — Compose then builds from
+    # the local Dockerfile and tags it as "image" instead of pulling.
+    image: ghcr.io/wtrucci/scadenziario:latest
     build: .
     restart: unless-stopped
     ports:
