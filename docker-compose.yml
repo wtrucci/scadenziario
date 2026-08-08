@@ -1,0 +1,16 @@
+services:
+  scadenziario:
+    build: .
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    environment:
+      # Path inside the container; must match the "data" volume mount below.
+      DATABASE_URL: sqlite:///./data/scadenziario.db
+    volumes:
+      - scadenziario-data:/app/data
+
+volumes:
+  scadenziario-data:
