@@ -139,6 +139,12 @@
         </datalist>
     </div>
     <div class="field">
+        <label for="numero_seriale">Numero seriale</label>
+        <input type="text" id="numero_seriale" name="numero_seriale"
+               value="{{ valori.numero_seriale }}" maxlength="100"
+               placeholder="Numero seriale del dispositivo/software coperto (opzionale)">
+    </div>
+    <div class="field">
         <label for="note">Note</label>
         <textarea id="note" name="note" rows="3">{{ valori.note }}</textarea>
     </div>

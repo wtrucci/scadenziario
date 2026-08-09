@@ -86,6 +86,9 @@ class Servizio(Base):
 
     # Optional: the colleague/contact to invoice when different from the end customer.
     referente: Mapped[str | None] = mapped_column(String(200))
+    # Optional: serial number of the licensed/covered device or software.
+    # Requested capacity was "at least 70 characters"; 100 gives headroom.
+    numero_seriale: Mapped[str | None] = mapped_column(String(100))
     note: Mapped[str | None] = mapped_column(Text)
 
     creato_il: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
