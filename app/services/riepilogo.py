@@ -18,7 +18,7 @@ lives in one place.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal
 
 from sqlalchemy import or_, select
@@ -73,10 +73,18 @@ def occorrenze_del_mese(
     # EFFECTIVE end rolls forward — see data_fine_effettiva), so the stored
     # data_fine alone would wrongly drop it from later months: match it on
     # rinnovo_automatico regardless of the stored data_fine instead.
+    # The one-day margin on data_fine keeps the "renewal proposal" occurrence
+    # visible (see occorrenze_nel_periodo): it falls on data_fine + 1 day,
+    # which can land in the month AFTER the stored end date (e.g. a contract
+    # ending on the last day of a month proposes its renewal on the 1st of
+    # the next one).
     query = (
         select(Servizio)
         .where(Servizio.data_inizio <= fine)
-        .where(or_(Servizio.data_fine >= inizio, Servizio.rinnovo_automatico.is_(True)))
+        .where(or_(
+            Servizio.data_fine >= inizio - timedelta(days=1),
+            Servizio.rinnovo_automatico.is_(True),
+        ))
         # Eager-load to avoid N+1 queries when expanding occurrences/grouping.
         .options(
             joinedload(Servizio.cliente),
@@ -108,9 +116,20 @@ def filtra_per_stato_visivo(
     The visual state ("fatturato"/"da_fatturare"/"in_scadenza"/"normale") is
     computed by the occurrence engine, so it cannot be filtered in SQL. When
     ``stato_visivo`` is falsy the rows are returned unchanged.
+
+    "da_fatturare" is broader than the row badge of the same name (which
+    only marks the OVERDUE ones): it selects every not-yet-billed occurrence
+    of a non-cancelled contract — the same population the dashboard's
+    "Da fatturare" summary card counts and the riepilogo page lists — so the
+    filter always returns exactly the rows the card announces.
     """
     if not stato_visivo:
         return righe
+    if stato_visivo == "da_fatturare":
+        return [
+            r for r in righe
+            if not r.occorrenza.fatturato and not r.servizio.disdetto
+        ]
     return [r for r in righe if r.occorrenza.stato_visivo == stato_visivo]
 
 

@@ -11,6 +11,9 @@
                 onclick="document.getElementById('filtri-dialog').showModal()">
             <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
             <span id="filtri-badge">{% if filtri_attivi %}<span class="icon-btn-badge"></span>{% endif %}</span>
+            {# Filled in by base.html when the "nascondi scaduti e disdetti"
+               preference is on — it's client-side, so the server can't know. #}
+            <span id="pref-badge"></span>
         </button>
     </h1>
     <div class="page-header-actions">
@@ -55,6 +58,17 @@
             </select>
         </div>
     </form>
+    {# Display preference, NOT a filter: it lives outside the form on purpose,
+       so changing it doesn't fire the form's HTMX request. It hides rows
+       client-side and is remembered in localStorage (see base.html), unlike
+       the filters above which live in the URL and reset when you navigate
+       away. #}
+    <div class="dialog-sezione">
+        <div class="field field-inline">
+            <input type="checkbox" id="nascondi-scaduti">
+            <label for="nascondi-scaduti">Nascondi scaduti e disdetti</label>
+        </div>
+    </div>
     <div class="filtri-dialog-actions">
         <button type="button" class="btn btn-secondary" onclick="document.getElementById('filtri-dialog').close()">Chiudi</button>
     </div>

@@ -98,7 +98,13 @@ class TestLogicaRiepilogo(unittest.TestCase):
 
         righe = riepilogo.occorrenze_del_mese(self.db, DICEMBRE)
         date_occ = {r.occorrenza.data_occorrenza for r in righe}
-        self.assertEqual(date_occ, {date(2026, 12, 1), date(2026, 12, 31)})
+        # 2026-12-30 is the renewal proposal of "Mese prima" (its own
+        # occurrence is 2026-11-30, one cadence earlier): a non-auto-renewing
+        # contract proposes its renewal one cadence past the end date, and
+        # that proposal belongs to the month it falls in.
+        self.assertEqual(
+            date_occ, {date(2026, 12, 1), date(2026, 12, 30), date(2026, 12, 31)}
+        )
 
     def test_occorrenza_mensile_compare_ogni_mese(self):
         """A monthly contract spanning several months yields one occurrence in

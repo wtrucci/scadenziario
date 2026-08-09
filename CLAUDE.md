@@ -102,10 +102,12 @@ le scelte tecniche quando non sono banali.
     inclusi) e NON si inserisce mai a mano nel form: il campo "Data fine" del
     form storico è stato sostituito da "Durata contratto (mesi)". Resta una
     colonna sul DB (serve al filtro SQL "quali contratti ricadono nel mese").
-  - **rinnovo_automatico**: se attivo, il contratto si rinnova da solo di un
-    altro blocco di durata_mesi ogni volta che altrimenti sarebbe scaduto. Il
-    rinnovo NON scrive nulla nel DB: la data di fine EFFETTIVA (che tiene conto
-    del rinnovo) si calcola al volo ad ogni lettura con
+  - **rinnovo_automatico**: significato COMMERCIALE: "fatturo senza chiedere
+    conferma al cliente". Se attivo, il contratto si rinnova da solo di un
+    altro blocco (durata_rinnovo_mesi se impostata, altrimenti durata_mesi)
+    ogni volta che altrimenti sarebbe scaduto. Il rinnovo NON scrive nulla
+    nel DB: la data di fine EFFETTIVA (che tiene conto del rinnovo) si
+    calcola al volo ad ogni lettura con
     `data_fine_effettiva(servizio, riferimento)` in
     app/services/occorrenze.py, sullo stesso principio delle occorrenze
     stesse ("calcolato, non salvato" — niente scheduler di avanzamento). Le
@@ -114,6 +116,34 @@ le scelte tecniche quando non sono banali.
     rinnovo_automatico=True indipendentemente dalla data_fine STORICA salvata,
     altrimenti sparirebbero dalla dashboard una volta superata la prima
     scadenza.
+  - **SENZA rinnovo_automatico — proposta di rinnovo e conferma tramite
+    fatturazione** (deciso con l'utente, vedi anche "Occorrenza" sotto): il
+    rinnovo va confermato dal cliente. Il sistema genera comunque UNA
+    occorrenza oltre la data_fine — la "proposta di rinnovo", che cade
+    sull'anniversario successivo (= data_fine + 1 giorno) — che compare in
+    dashboard/riepilogo e genera le notifiche man mano che si avvicina.
+    - Marcarla **fatturata** = il cliente ha confermato: il contratto si
+      ESTENDE di un blocco di rinnovo (durata_mesi += blocco, data_fine
+      ricalcolata; data_inizio NON si muove, così lo storico resta visibile).
+      Al primo rinnovo confermato durata_rinnovo_mesi viene valorizzata con
+      il blocco usato (altrimenti la conferma successiva userebbe come passo
+      il totale accumulato). Vedi `_estendi_se_rinnovo_confermato` in
+      app/routes/servizi.py; smarcarla ritira l'estensione
+      (`_ritira_estensione_se_smarcato`).
+    - Se il cliente non conferma: dopo la data_fine lo stato è "Scaduto",
+      la proposta resta "Da fatturare"; si risolve fatturando (estende) o
+      spuntando disdetto (sopprime avvisi e proposta).
+    - La proposta è UNA sola (nessuna proiezione oltre): dopo, non si sa
+      nulla finché il cliente non conferma.
+    - Il filtro SQL del mese ha un margine di 1 giorno su data_fine perché
+      la proposta (data_fine+1) può cadere nel mese successivo alla
+      data_fine salvata.
+    - Il backfill alla creazione ("occorrenze passate = fatturate per
+      definizione", vedi sotto) NON tocca la proposta: è proprio la
+      decisione pendente.
+  - **durata_rinnovo_mesi** (opzionale): lunghezza del blocco di rinnovo se
+    diversa dal periodo iniziale (es. 36 mesi iniziali, poi rinnovi annuali
+    di 12). Vuota = i rinnovi durano quanto durata_mesi.
   - **cadenza_mesi**: ogni quanti mesi il servizio va fatturato (1 = mensile,
     3 = trimestrale, 6 = semestrale, 12 = annuale, ecc.). Sostituisce il
     vecchio Enum `ricorrenza`. NON esistono più servizi "una tantum": tutto è
@@ -129,7 +159,9 @@ le scelte tecniche quando non sono banali.
   fatturabile. Le occorrenze si generano al volo partendo da data_inizio e
   aggiungendo cadenza_mesi ripetutamente, finché la data <= data_fine EFFETTIVA
   (`data_fine_effettiva`: con rinnovo_automatico può superare la data_fine
-  storicizzata sul DB).
+  storicizzata sul DB). ECCEZIONE: un contratto SENZA rinnovo_automatico e non
+  disdetto genera UNA occorrenza in più oltre la data_fine, la "proposta di
+  rinnovo" (vedi rinnovo_automatico sopra).
   - Ogni occorrenza cade nel **giorno del mese di data_inizio** (es. inizio il
     15 → ogni occorrenza il giorno 15 del suo mese). Se un mese non ha quel
     giorno (es. il 31 a febbraio), usare l'ultimo giorno valido del mese.

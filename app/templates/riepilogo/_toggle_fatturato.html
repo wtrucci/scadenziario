@@ -1,17 +1,17 @@
 {# Partial: "mark as billed" button for a single occurrence, used only on the
    riepilogo page (see riepilogo/_risultati.html), so "nav" is in scope
-   (Jinja includes share the parent context). Unlike the dashboard's toggle,
-   this page only ever shows NOT-YET-billed occurrences (see
-   dashboard._contesto_riepilogo), so this button is always "mark as billed",
-   never a real toggle from the user's point of view: once clicked, the row
-   disappears from the list. vista=riepilogo tells the shared toggle route
-   (app/routes/servizi.py) to re-render this page's results region instead of
-   the dashboard's. #}
-<button type="button" class="btn-ok"
+   (Jinja includes share the parent context). This page only ever shows
+   NOT-YET-billed occurrences (see dashboard._contesto_riepilogo), so the
+   button matches the dashboard's not-billed look (btn-warn "Da fatturare"):
+   same visual language everywhere — yellow = still to invoice, click to mark
+   billed. Once clicked, the row disappears from the list. vista=riepilogo
+   tells the shared toggle route (app/routes/servizi.py) to re-render this
+   page's results region instead of the dashboard's. #}
+<button type="button" class="btn-warn"
         hx-post="/servizi/{{ servizio_id }}/occorrenze/{{ data_occorrenza.isoformat() }}/fatturato"
         hx-target="#risultati"
         hx-swap="innerHTML"
         hx-vals='{"mese": "{{ nav.chiave }}", "vista": "riepilogo"}'
         title="Segna come fatturato">
-    ✓ Fatturato
+    Da fatturare
 </button>

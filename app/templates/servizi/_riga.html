@@ -2,7 +2,10 @@
    Context: s (Servizio), cadenza (human-readable cadence label), data_fine_eff
    (effective end date, rolled forward if rinnovo_automatico is set), stato_s
    (computed contract state), etichette_stato (state -> label). #}
-<tr id="servizio-{{ s.id }}">
+{# data-stato carries the computed contract state so the "nascondi scaduti e
+   disdetti" display preference (saved in localStorage, see base.html) can hide
+   the row client-side without a round-trip. #}
+<tr id="servizio-{{ s.id }}" data-stato="{{ stato_s }}">
     <td class="cell-primary">{{ s.cliente.nome }}</td>
     <td class="cell-secondary">{% if s.referente %}{{ s.referente }}{% else %}—{% endif %}</td>
     <td class="cell-secondary">{% if s.luogo_installazione %}{{ s.luogo_installazione }}{% else %}—{% endif %}</td>

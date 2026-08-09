@@ -88,24 +88,20 @@ def stato_contratto(servizio: Servizio, oggi: date | None = None) -> str:
        ``oggi`` — see data_fine_effettiva — so it can never be "scaduto")
     3. effective end date within preavviso_giorni     -> "in_scadenza"
     4. otherwise                                      -> "attivo"
+
+    What matters is ALWAYS the contract's end date (per explicit product
+    decision): "scaduto" simply means data_fine passed without the renewal
+    being confirmed. The pending renewal itself is surfaced as an occurrence
+    (the "renewal proposal", see occorrenze_nel_periodo), not through this
+    state. Billing that proposal extends the contract (see routes/servizi.py),
+    which brings the state back to attivo — so an expired-and-then-confirmed
+    contract heals on its own.
     """
     if servizio.disdetto:
         return "disdetto"
     if oggi is None:
         oggi = date.today()
-    if (
-        not servizio.rinnovo_automatico
-        and servizio.durata_mesi
-        and servizio.durata_mesi <= servizio.cadenza_mesi
-    ):
-        # One-off contract (a single occurrence, which falls on data_inizio -
-        # see the class docstring): with no renewal, data_fine can sit many
-        # months after data_inizio without any real event happening in
-        # between, so it would make the badge lag behind the one date that
-        # actually matters here. Use the occurrence's own date instead.
-        fine = servizio.data_inizio
-    else:
-        fine = data_fine_effettiva(servizio, riferimento=oggi)
+    fine = data_fine_effettiva(servizio, riferimento=oggi)
     if fine < oggi:
         return "scaduto"
     if fine <= oggi + timedelta(days=servizio.preavviso_giorni):
@@ -213,6 +209,12 @@ def occorrenze_nel_periodo(
     ``data_a``, so occurrences keep being generated past the originally stored
     end date without any stored value ever changing.
 
+    A contract WITHOUT auto-renewal additionally yields ONE occurrence past
+    its end date — the "renewal proposal" at the next anniversary (which is
+    always data_fine + 1 day, since data_fine is the day before an
+    anniversary): the renewal to be confirmed by the client. See the inline
+    comment in the loop below. Cancelled contracts (disdetto) don't propose.
+
     For each date a per-occurrence STATE row (OverrideImporto) may exist:
     ``importo``/``quantita`` are used only when not NULL (otherwise the service
     defaults apply), and ``fatturato`` is read from it. ``oggi`` (defaulting to
@@ -236,6 +238,11 @@ def occorrenze_nel_periodo(
     occorrenze: list[Occorrenza] = []
     fine_effettiva = data_fine_effettiva(servizio, riferimento=data_a)
 
+    # Degenerate contract (end before start): no occurrences at all — without
+    # this guard the renewal-proposal rule below would still emit one.
+    if fine_effettiva < inizio:
+        return occorrenze
+
     passo = 0
     while True:
         anno, mese = _avanza_mesi(inizio.year, inizio.month, passo * servizio.cadenza_mesi)
@@ -245,9 +252,19 @@ def occorrenze_nel_periodo(
         ultimo_giorno = calendar.monthrange(anno, mese)[1]
         data_occ = date(anno, mese, min(giorno_target, ultimo_giorno))
 
-        # Occurrences are strictly increasing, so once we pass the effective end
-        # date we stop.
-        if data_occ > fine_effettiva:
+        # Occurrences are strictly increasing, so once we pass the effective
+        # end date we stop — EXCEPT that a contract WITHOUT auto-renewal also
+        # generates the first anniversary PAST its end date, as a "renewal
+        # proposal": renewing there needs the client's go-ahead (that is what
+        # not ticking rinnovo_automatico means), so the system must surface
+        # that date in the dashboard/riepilogo and notify as it approaches,
+        # instead of silently ending the contract. Billing it = the client
+        # confirmed, and extends the contract by one renewal block (see
+        # routes/servizi.py). Cancelled contracts (disdetto) propose nothing.
+        # For auto-renewing contracts fine_effettiva already covers data_a,
+        # so anything past it is out of the requested window anyway.
+        oltre_fine = data_occ > fine_effettiva
+        if oltre_fine and (servizio.rinnovo_automatico or servizio.disdetto):
             break
 
         if data_da <= data_occ <= data_a:
@@ -274,6 +291,11 @@ def occorrenze_nel_periodo(
                 ),
             ))
 
+        if oltre_fine:
+            # The renewal proposal is a single extra occurrence, never a
+            # projection further into the future: past it, nothing is known
+            # until the client confirms.
+            break
         passo += 1
 
     return occorrenze

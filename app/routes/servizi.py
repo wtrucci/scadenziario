@@ -31,6 +31,7 @@ from app.services.occorrenze import (
     ETICHETTE_STATO_CONTRATTO,
     STATI_CONTRATTO,
     Occorrenza,
+    aggiungi_mesi,
     calcola_data_fine,
     data_fine_effettiva,
     durata_mesi_congelata,
@@ -54,8 +55,57 @@ def _get_or_404(db: Session, servizio_id: int) -> Servizio:
     return s
 
 
+def _passo_rinnovo_manuale(servizio: Servizio) -> int:
+    """Renewal block length for a manually-confirmed renewal, in months:
+    ``durata_rinnovo_mesi`` if set, otherwise the contract's own duration.
+    Mirrors ``_passo_rinnovo`` in occorrenze.py (kept private there)."""
+    return servizio.durata_rinnovo_mesi or servizio.durata_mesi
+
+
+def _estendi_se_rinnovo_confermato(servizio: Servizio, data_occorrenza: date) -> None:
+    """Billing the "renewal proposal" occurrence of a contract WITHOUT
+    auto-renewal (the one occurrence past data_fine — see
+    occorrenze_nel_periodo) IS the client's confirmation: extend the contract
+    by one renewal block, so data_fine moves forward, the contract's state
+    goes back to attivo, and the NEXT renewal proposal starts alerting as it
+    approaches — the same progression rinnovo_automatico gives for free, but
+    only once actually confirmed by billing, never before.
+
+    data_inizio never moves, so the already-billed history keeps being
+    generated and stays visible. Occurrences within the contract period are
+    left alone: billing them is just bookkeeping, not a renewal decision.
+    """
+    if servizio.rinnovo_automatico or not servizio.durata_mesi:
+        return
+    if data_occorrenza <= servizio.data_fine:
+        return
+    passo = _passo_rinnovo_manuale(servizio)
+    # durata_mesi is about to accumulate: remember the block length explicitly,
+    # or the NEXT confirmation would use the accumulated total as its step.
+    servizio.durata_rinnovo_mesi = passo
+    servizio.durata_mesi += passo
+    servizio.data_fine = calcola_data_fine(servizio.data_inizio, servizio.durata_mesi)
+
+
+def _ritira_estensione_se_smarcato(servizio: Servizio, data_occorrenza: date) -> None:
+    """Undo of _estendi_se_rinnovo_confermato, for when the billing click was
+    a mistake: un-billing the occurrence that started the LAST confirmed
+    renewal block retracts that block, putting the contract (and its pending
+    renewal proposal) back exactly as before the click."""
+    if servizio.rinnovo_automatico or not servizio.durata_mesi:
+        return
+    passo = _passo_rinnovo_manuale(servizio)
+    if servizio.durata_mesi <= passo:
+        return  # nothing left to retract: this is the initial term
+    if data_occorrenza != aggiungi_mesi(servizio.data_inizio, servizio.durata_mesi - passo):
+        return
+    servizio.durata_mesi -= passo
+    servizio.data_fine = calcola_data_fine(servizio.data_inizio, servizio.durata_mesi)
+
+
 def _imposta_fatturato(
-    db: Session, servizio_id: int, data_occorrenza: date, occ: Occorrenza, fatturato: bool
+    db: Session, servizio: Servizio, data_occorrenza: date, occ: Occorrenza, fatturato: bool,
+    *, avanza_se_confermato: bool = True,
 ) -> None:
     """Get-or-create the per-occurrence state row and set its fatturato flag.
 
@@ -64,14 +114,21 @@ def _imposta_fatturato(
     to the service price does not alter what was already billed. Un-billing
     clears that snapshot ONLY if it was not a deliberate manual override.
     Shared by the single-occurrence toggle and the per-customer bulk action.
+
+    Billing the renewal-proposal occurrence of a non-auto-renewing contract
+    also extends the contract by one renewal block (and un-billing it
+    retracts the block) — see _estendi_se_rinnovo_confermato.
+    ``avanza_se_confermato=False`` is used only by _fattura_occorrenze_passate
+    (a historical backfill at creation time, not a live confirmation from the
+    client) so it never moves the contract's dates.
     """
     stato = db.scalars(
         select(OverrideImporto)
-        .where(OverrideImporto.servizio_id == servizio_id)
+        .where(OverrideImporto.servizio_id == servizio.id)
         .where(OverrideImporto.data_occorrenza == data_occorrenza)
     ).first()
     if stato is None:
-        stato = OverrideImporto(servizio_id=servizio_id, data_occorrenza=data_occorrenza)
+        stato = OverrideImporto(servizio_id=servizio.id, data_occorrenza=data_occorrenza)
         db.add(stato)
 
     stato.fatturato = fatturato
@@ -79,11 +136,15 @@ def _imposta_fatturato(
         stato.importo = occ.importo
         stato.quantita = occ.quantita
         stato.fatturato_il = utcnow()
+        if avanza_se_confermato:
+            _estendi_se_rinnovo_confermato(servizio, data_occorrenza)
     else:
         stato.fatturato_il = None
         if not stato.override_manuale:
             stato.importo = None
             stato.quantita = None
+        if avanza_se_confermato:
+            _ritira_estensione_se_smarcato(servizio, data_occorrenza)
 
 
 def _fattura_occorrenze_passate(db: Session, servizio: Servizio, oggi: date) -> None:
@@ -108,9 +169,18 @@ def _fattura_occorrenze_passate(db: Session, servizio: Servizio, oggi: date) -> 
             select(OverrideImporto).where(OverrideImporto.servizio_id == servizio.id)
         )
     }
+    # The renewal proposal (the one occurrence past the effective end date of
+    # a non-auto-renewing contract) is exempt even when it is already in the
+    # past: it is precisely the pending decision the user must act on, not
+    # history to be silenced.
+    fine_effettiva = data_fine_effettiva(servizio, riferimento=oggi)
     for occ in occorrenze_nel_periodo(servizio, servizio.data_inizio, oggi, oggi=oggi):
+        if occ.data_occorrenza > fine_effettiva:
+            continue
         if occ.data_occorrenza <= oggi and occ.data_occorrenza not in esistenti:
-            _imposta_fatturato(db, servizio.id, occ.data_occorrenza, occ, fatturato=True)
+            _imposta_fatturato(
+                db, servizio, occ.data_occorrenza, occ, fatturato=True, avanza_se_confermato=False
+            )
 
 
 def _clienti_attivi(db: Session) -> list[Cliente]:
@@ -625,7 +695,7 @@ def toggle_fatturato(
         raise HTTPException(status_code=404, detail="Occorrenza non trovata")
     occ = occorrenze[0]
 
-    _imposta_fatturato(db, servizio_id, data_occorrenza, occ, fatturato=not occ.fatturato)
+    _imposta_fatturato(db, s, data_occorrenza, occ, fatturato=not occ.fatturato)
     db.commit()
 
     if vista == "riepilogo":
@@ -657,7 +727,7 @@ def fatturato_cliente(
         if riga.occorrenza.stato_visivo == "fatturato":
             continue
         _imposta_fatturato(
-            db, riga.servizio.id, riga.occorrenza.data_occorrenza, riga.occorrenza, fatturato=True
+            db, riga.servizio, riga.occorrenza.data_occorrenza, riga.occorrenza, fatturato=True
         )
     db.commit()
 

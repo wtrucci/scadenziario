@@ -103,14 +103,26 @@ def _contesto_risultati(
     # Summary card counts, computed from the cliente/referente-filtered month
     # BEFORE the stato filter, so the cards always show the full breakdown even
     # while the table below is narrowed to one state.
+    # The cards are NOT mutually exclusive (explicit user request):
+    # "da_fatturare" counts EVERY not-yet-billed occurrence of the month
+    # (cancelled contracts excluded — same population the riepilogo page
+    # lists), while "in_scadenza" counts the subset inside its warning window,
+    # so one occurrence can appear in both cards at once. This differs from
+    # the per-ROW stato_visivo, which stays exclusive by precedence (the row
+    # badge shows the single most urgent state).
     conteggi = {"da_fatturare": 0, "in_scadenza": 0, "fatturato": 0}
     totale_da_fatturare = Decimal("0")
     for riga in righe_mese:
-        stato_occ = riga.occorrenza.stato_visivo
-        if stato_occ in conteggi:
-            conteggi[stato_occ] += 1
-        if stato_occ in ("da_fatturare", "in_scadenza"):
-            totale_da_fatturare += riga.occorrenza.totale
+        occ = riga.occorrenza
+        if occ.fatturato:
+            conteggi["fatturato"] += 1
+            continue
+        if riga.servizio.disdetto:
+            continue  # never nag to invoice a cancelled contract
+        conteggi["da_fatturare"] += 1
+        totale_da_fatturare += occ.totale
+        if occ.stato_visivo == "in_scadenza":
+            conteggi["in_scadenza"] += 1
 
     # Contract-level state (Attivo/In scadenza/Scaduto/Disdetto) is computed,
     # not a column — one lookup per distinct service, reused by the template

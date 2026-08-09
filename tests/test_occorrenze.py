@@ -53,21 +53,29 @@ def _date(occorrenze_list):
 
 class TestOccorrenze(unittest.TestCase):
 
-    # 1. Simple monthly cadence: 12 occurrences in a year, all on the same day.
+    # NOTE on the trailing extra date in the tests below: a contract WITHOUT
+    # auto-renewal also yields ONE occurrence past its end date — the "renewal
+    # proposal" to be confirmed (billed) by the client. See
+    # occorrenze_nel_periodo.
+
+    # 1. Simple monthly cadence: 12 occurrences in a year, all on the same
+    #    day, plus the renewal proposal.
     def test_mensile_un_anno(self):
         s = _servizio(date(2025, 1, 15), date(2025, 12, 15), cadenza_mesi=1)
         occ = occorrenze.occorrenze_nel_periodo(s, *TUTTO)
-        self.assertEqual(len(occ), 12)
+        self.assertEqual(len(occ), 13)
         self.assertTrue(all(o.data_occorrenza.day == 15 for o in occ))
         self.assertEqual(occ[0].data_occorrenza, date(2025, 1, 15))
-        self.assertEqual(occ[-1].data_occorrenza, date(2025, 12, 15))
+        self.assertEqual(occ[-2].data_occorrenza, date(2025, 12, 15))
+        self.assertEqual(occ[-1].data_occorrenza, date(2026, 1, 15))  # renewal proposal
 
     # 2a. Quarterly cadence.
     def test_trimestrale(self):
         s = _servizio(date(2025, 1, 15), date(2025, 12, 31), cadenza_mesi=3)
         self.assertEqual(
             _date(occorrenze.occorrenze_nel_periodo(s, *TUTTO)),
-            [date(2025, 1, 15), date(2025, 4, 15), date(2025, 7, 15), date(2025, 10, 15)],
+            [date(2025, 1, 15), date(2025, 4, 15), date(2025, 7, 15), date(2025, 10, 15),
+             date(2026, 1, 15)],  # renewal proposal
         )
 
     # 2b. Yearly cadence across several years.
@@ -75,14 +83,16 @@ class TestOccorrenze(unittest.TestCase):
         s = _servizio(date(2025, 1, 15), date(2027, 12, 31), cadenza_mesi=12)
         self.assertEqual(
             _date(occorrenze.occorrenze_nel_periodo(s, *TUTTO)),
-            [date(2025, 1, 15), date(2026, 1, 15), date(2027, 1, 15)],
+            [date(2025, 1, 15), date(2026, 1, 15), date(2027, 1, 15),
+             date(2028, 1, 15)],  # renewal proposal
         )
 
-    # 3. data_fine == data_inizio: exactly one occurrence (single payment).
+    # 3. data_fine == data_inizio: one occurrence (single payment), plus the
+    #    renewal proposal one cadence later.
     def test_pagamento_singolo(self):
         s = _servizio(date(2025, 5, 20), date(2025, 5, 20), cadenza_mesi=1)
         occ = occorrenze.occorrenze_nel_periodo(s, *TUTTO)
-        self.assertEqual(_date(occ), [date(2025, 5, 20)])
+        self.assertEqual(_date(occ), [date(2025, 5, 20), date(2025, 6, 20)])
 
     # 4. Day-31 case: Feb clamps to 28 (non-leap), but March returns to 31
     #    (the target day must NOT drift).
@@ -96,6 +106,7 @@ class TestOccorrenze(unittest.TestCase):
                 date(2025, 3, 31),  # back to 31, no drift
                 date(2025, 4, 30),  # clamped (April has 30 days)
                 date(2025, 5, 31),  # back to 31
+                date(2025, 6, 30),  # renewal proposal (clamped)
             ],
         )
 
@@ -111,6 +122,7 @@ class TestOccorrenze(unittest.TestCase):
                 date(2026, 2, 28),  # clamped
                 date(2027, 2, 28),  # clamped
                 date(2028, 2, 29),  # leap again -> target day recovered
+                date(2029, 2, 28),  # renewal proposal (clamped)
             ],
         )
 
@@ -331,11 +343,14 @@ class TestDurataERinnovo(unittest.TestCase):
         occ = occorrenze.occorrenze_nel_periodo(s, date(2026, 3, 1), date(2026, 3, 31))
         self.assertEqual(_date(occ), [date(2026, 3, 15)])
 
-    # Without rinnovo_automatico, the same query yields nothing: the contract
-    # really did end.
-    def test_nessuna_occorrenza_oltre_data_fine_senza_rinnovo(self):
+    # Without rinnovo_automatico, the contract yields exactly ONE occurrence
+    # past its end date — the renewal proposal at the next anniversary — and
+    # nothing further: past it, nothing is known until the client confirms.
+    def test_solo_la_proposta_di_rinnovo_oltre_data_fine_senza_rinnovo(self):
         s = _servizio(date(2025, 1, 15), date(2025, 12, 15), cadenza_mesi=1,
                       durata_mesi=12, rinnovo_automatico=False)
+        occ = occorrenze.occorrenze_nel_periodo(s, date(2026, 1, 1), date(2026, 12, 31))
+        self.assertEqual(_date(occ), [date(2026, 1, 15)])  # the proposal only
         occ = occorrenze.occorrenze_nel_periodo(s, date(2026, 3, 1), date(2026, 3, 31))
         self.assertEqual(occ, [])
 
@@ -365,6 +380,41 @@ class TestDurataERinnovo(unittest.TestCase):
             occorrenze.data_fine_effettiva(s, riferimento=date(2026, 6, 1)),
             date(2026, 12, 31),
         )
+
+
+class TestPropostaRinnovo(unittest.TestCase):
+    """The "renewal proposal": a contract WITHOUT auto-renewal yields one
+    occurrence past its end date (the next anniversary, data_fine + 1 day) —
+    the renewal the client still has to confirm. Auto-renewing and cancelled
+    contracts must not propose anything."""
+
+    def test_proposta_alla_scadenza(self):
+        s = _servizio(date(2025, 8, 24), date(2026, 8, 23), cadenza_mesi=12,
+                      durata_mesi=12, rinnovo_automatico=False)
+        occ = occorrenze.occorrenze_nel_periodo(s, *TUTTO, oggi=date(2026, 8, 9))
+        self.assertEqual(_date(occ), [date(2025, 8, 24), date(2026, 8, 24)])
+        # 15 days out, within the default 30-day warning window.
+        self.assertEqual(occ[-1].stato_visivo, "in_scadenza")
+
+    def test_nessuna_proposta_con_rinnovo_automatico(self):
+        s = _servizio(date(2025, 8, 24), date(2026, 8, 23), cadenza_mesi=12,
+                      durata_mesi=12, rinnovo_automatico=True)
+        # Clip to the stored contract period: the auto-renewing contract keeps
+        # generating occurrences by rolling forward, but never an extra
+        # "proposal" beyond what the window asks for.
+        occ = occorrenze.occorrenze_nel_periodo(s, date(2025, 1, 1), date(2026, 8, 23))
+        self.assertEqual(_date(occ), [date(2025, 8, 24)])
+
+    def test_nessuna_proposta_se_disdetto(self):
+        s = _servizio(date(2025, 8, 24), date(2026, 8, 23), cadenza_mesi=12,
+                      durata_mesi=12, rinnovo_automatico=False, disdetto=True)
+        occ = occorrenze.occorrenze_nel_periodo(s, *TUTTO)
+        self.assertEqual(_date(occ), [date(2025, 8, 24)])
+
+    def test_contratto_degenere_senza_occorrenze(self):
+        # End before start: no occurrences, and in particular no proposal.
+        s = _servizio(date(2025, 6, 1), date(2025, 1, 1), cadenza_mesi=1)
+        self.assertEqual(occorrenze.occorrenze_nel_periodo(s, *TUTTO), [])
 
 
 class TestDurataMesiCongelata(unittest.TestCase):

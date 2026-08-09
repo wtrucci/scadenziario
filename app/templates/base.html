@@ -110,30 +110,43 @@
         // in, with no re-init step needed. Sorts only the clicked table's own
         // tbody rows, so multiple tables on one page (e.g. one per customer
         // in the riepilogo) sort independently.
-        document.addEventListener("click", function (e) {
-            if (e.target.closest(".col-toggle-btn")) return;
-            var th = e.target.closest("th.sortable");
-            if (!th) return;
-            var tabella = th.closest("table");
+        var ORDINAMENTO_KEY_PREFIX = "scadenziario:ordinamento:";
+
+        function leggiOrdinamento(tableId) {
+            try {
+                var raw = localStorage.getItem(ORDINAMENTO_KEY_PREFIX + tableId);
+                return raw ? JSON.parse(raw) : null;
+            } catch (e) {
+                return null;
+            }
+        }
+
+        function salvaOrdinamento(tableId, indice, crescente) {
+            localStorage.setItem(ORDINAMENTO_KEY_PREFIX + tableId, JSON.stringify({ indice: indice, crescente: crescente }));
+        }
+
+        // A cell can carry data-sort (e.g. an ISO date) to sort by a value
+        // different from what's displayed — plain text sorting on
+        // "24/08/2026 – 23/08/2027" would order by day-of-month first, not
+        // chronologically.
+        function chiaveOrdinamento(cella) {
+            var attr = cella.getAttribute("data-sort");
+            if (attr !== null) return attr.trim().toLowerCase();
+            return (cella.textContent || "").trim().toLowerCase();
+        }
+
+        // Sorts the clicked table's own tbody rows by the given header/column,
+        // used both for the click-to-sort handler and to restore a previously
+        // saved order (see leggiOrdinamento) after a reload or an HTMX swap.
+        function ordinaTabella(tabella, th, crescente) {
             var corpo = tabella.tBodies[0];
             if (!corpo) return;
             var indice = Array.prototype.indexOf.call(th.parentNode.children, th);
-            var crescente = th.getAttribute("data-dir") !== "asc";
 
             tabella.querySelectorAll("th.sortable").forEach(function (altro) {
                 if (altro !== th) altro.removeAttribute("data-dir");
             });
             th.setAttribute("data-dir", crescente ? "asc" : "desc");
-
-            // A cell can carry data-sort (e.g. an ISO date) to sort by a value
-            // different from what's displayed — plain text sorting on
-            // "24/08/2026 – 23/08/2027" would order by day-of-month first,
-            // not chronologically.
-            function chiaveOrdinamento(cella) {
-                var attr = cella.getAttribute("data-sort");
-                if (attr !== null) return attr.trim().toLowerCase();
-                return (cella.textContent || "").trim().toLowerCase();
-            }
 
             var righe = Array.prototype.slice.call(corpo.querySelectorAll("tr"));
             righe.sort(function (a, b) {
@@ -144,14 +157,45 @@
                 return 0;
             });
             righe.forEach(function (riga) { corpo.appendChild(riga); });
+        }
 
-            // Re-sync pagination: row order changed, so which rows fall on
-            // which page changed too. Back to page 1 on a fresh sort.
+        // Click-to-sort table columns (th.sortable): alphabetical, toggles
+        // ascending/descending on repeated clicks. Delegated on document (not
+        // bound per-th) so it keeps working after HTMX swaps new table rows
+        // in, with no re-init step needed. Sorts only the clicked table's own
+        // tbody rows, so multiple tables on one page (e.g. one per customer
+        // in the riepilogo) sort independently.
+        document.addEventListener("click", function (e) {
+            if (e.target.closest(".col-toggle-btn")) return;
+            var th = e.target.closest("th.sortable");
+            if (!th) return;
+            var tabella = th.closest("table");
+            var indice = Array.prototype.indexOf.call(th.parentNode.children, th);
+            var crescente = th.getAttribute("data-dir") !== "asc";
+
+            ordinaTabella(tabella, th, crescente);
+
             if (tabella.hasAttribute("data-table-id")) {
+                salvaOrdinamento(tabella.getAttribute("data-table-id"), indice, crescente);
+                // Re-sync pagination: row order changed, so which rows fall on
+                // which page changed too. Back to page 1 on a fresh sort.
                 tabella._paginaCorrente = 1;
                 applicaPaginazione(tabella);
             }
         });
+
+        // Restores a previously saved sort order for a data table (see
+        // salvaOrdinamento), so it survives reloads and navigating away and
+        // back (e.g. opening "Modifica" on a row and returning).
+        function applicaOrdinamento(tabella) {
+            var tableId = tabella.getAttribute("data-table-id");
+            if (!tableId || !tabella.tHead) return;
+            var ordinamento = leggiOrdinamento(tableId);
+            if (!ordinamento) return;
+            var th = tabella.tHead.rows[0].children[ordinamento.indice];
+            if (!th || !th.classList.contains("sortable")) return;
+            ordinaTabella(tabella, th, ordinamento.crescente);
+        }
 
         // ---------------------------------------------------------------
         // Column visibility + pagination for data tables (servizi, dashboard,
@@ -218,11 +262,18 @@
             Array.prototype.forEach.call(headerRow.children, function (th, i) {
                 // Skip the column-picker button's own (usually label-less) cell.
                 if (th.classList.contains("col-actions-header") && !th.firstChild.textContent.trim() && th.children.length <= 1) return;
-                var testo = th.childNodes.length
-                    ? Array.prototype.map.call(th.childNodes, function (n) {
-                          return n.nodeType === Node.TEXT_NODE ? n.textContent : "";
-                      }).join("").trim()
-                    : th.textContent.trim();
+                // The label is normally the th's own text nodes (skipping the
+                // gear button and any other markup), but a header that wraps
+                // its label in .th-label (to control where the sort arrow
+                // lands) has no bare text node — read that span instead.
+                var etichetta = th.querySelector(".th-label");
+                var testo = etichetta
+                    ? etichetta.textContent.trim()
+                    : th.childNodes.length
+                        ? Array.prototype.map.call(th.childNodes, function (n) {
+                              return n.nodeType === Node.TEXT_NODE ? n.textContent : "";
+                          }).join("").trim()
+                        : th.textContent.trim();
                 if (!testo) testo = "Colonna " + (i + 1);
 
                 var label = document.createElement("label");
@@ -270,7 +321,12 @@
         function applicaPaginazione(tabella) {
             var corpo = tabella.tBodies[0];
             if (!corpo) return;
-            var righe = Array.prototype.slice.call(corpo.rows);
+            // Rows hidden by the display preference (see applicaNascondiScaduti)
+            // are left out entirely: they must not fill page slots nor be
+            // counted in "N risultati".
+            var righe = Array.prototype.slice.call(corpo.rows).filter(function (tr) {
+                return !tr.classList.contains("stato-nascosto");
+            });
             var dimensione = righePerPaginaCorrente();
             var totale = righe.length;
             var totalePagine = Math.max(1, Math.ceil(totale / dimensione));
@@ -329,14 +385,80 @@
             });
         });
 
+        // ---------------------------------------------------------------
+        // "Nascondi scaduti e disdetti" (servizi page only).
+        //
+        // This is a display PREFERENCE, not a filter: the filters live in the
+        // URL and are deliberately forgotten when you navigate away, whereas
+        // this one must survive opening a service and coming back, so it is
+        // saved in localStorage like the column/page-size choices. Rows carry
+        // their computed contract state in data-stato (see servizi/_riga.html),
+        // so hiding them needs no round-trip.
+
+        var NASCONDI_SCADUTI_KEY = "scadenziario:nascondiScaduti";
+        var STATI_NASCOSTI = ["scaduto", "disdetto"];
+
+        function nascondiScadutiAttivo() {
+            return localStorage.getItem(NASCONDI_SCADUTI_KEY) === "1";
+        }
+
+        // Shows a dot on the funnel icon while the preference is on: rows are
+        // missing from the table and nothing else on the page would say why.
+        function aggiornaIndicatorePreferenza() {
+            var badge = document.getElementById("pref-badge");
+            if (!badge) return;
+            var attivo = nascondiScadutiAttivo();
+            badge.innerHTML = attivo ? '<span class="icon-btn-badge-pref"></span>' : "";
+            var btn = badge.closest(".icon-btn");
+            if (btn) {
+                btn.title = attivo ? "Filtri — scaduti e disdetti nascosti" : "Filtri";
+            }
+        }
+
+        function applicaNascondiScaduti(tabella) {
+            // Only the servizi table has a contract state per row.
+            if (tabella.getAttribute("data-table-id") !== "servizi") return;
+            var corpo = tabella.tBodies[0];
+            if (!corpo) return;
+            var attivo = nascondiScadutiAttivo();
+            Array.prototype.forEach.call(corpo.rows, function (tr) {
+                var stato = tr.getAttribute("data-stato");
+                tr.classList.toggle(
+                    "stato-nascosto",
+                    attivo && STATI_NASCOSTI.indexOf(stato) !== -1
+                );
+            });
+        }
+
+        document.addEventListener("change", function (e) {
+            if (e.target.id !== "nascondi-scaduti") return;
+            localStorage.setItem(NASCONDI_SCADUTI_KEY, e.target.checked ? "1" : "0");
+            aggiornaIndicatorePreferenza();
+            document.querySelectorAll('table[data-table-id="servizi"]').forEach(function (t) {
+                applicaNascondiScaduti(t);
+                // Row count changed, so page 1 is the only safe page to land on.
+                t._paginaCorrente = 1;
+                applicaPaginazione(t);
+            });
+        });
+
         function initTabelleDati(root) {
             root.querySelectorAll("table[data-table-id]").forEach(function (tabella) {
                 applicaColonne(tabella);
+                applicaOrdinamento(tabella);
+                applicaNascondiScaduti(tabella);
                 tabella._paginaCorrente = 1;
                 applicaPaginazione(tabella);
             });
         }
-        document.addEventListener("DOMContentLoaded", function () { initTabelleDati(document); });
+        document.addEventListener("DOMContentLoaded", function () {
+            // The checkbox lives in the filter dialog, outside any HTMX target,
+            // so it only needs syncing on a full page load.
+            var chk = document.getElementById("nascondi-scaduti");
+            if (chk) chk.checked = nascondiScadutiAttivo();
+            aggiornaIndicatorePreferenza();
+            initTabelleDati(document);
+        });
         document.addEventListener("htmx:afterSwap", function (e) { initTabelleDati(e.target); });
     </script>
 </body>

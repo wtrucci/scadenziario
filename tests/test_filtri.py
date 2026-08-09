@@ -15,6 +15,7 @@ Uses an isolated in-memory SQLite database; the real DB is never touched.
 """
 from __future__ import annotations
 
+import re
 import unittest
 from datetime import date
 from decimal import Decimal
@@ -105,16 +106,45 @@ class TestFiltriLogica(unittest.TestCase):
     def test_filtra_per_stato_visivo(self):
         """The computed-state filter keeps only matching rows, and is a no-op
         when no state is requested."""
+        def riga(stato_visivo, fatturato=False, disdetto=False):
+            return SimpleNamespace(
+                occorrenza=SimpleNamespace(stato_visivo=stato_visivo, fatturato=fatturato),
+                servizio=SimpleNamespace(disdetto=disdetto),
+            )
+
         righe = [
-            SimpleNamespace(occorrenza=SimpleNamespace(stato_visivo="da_fatturare")),
-            SimpleNamespace(occorrenza=SimpleNamespace(stato_visivo="fatturato")),
-            SimpleNamespace(occorrenza=SimpleNamespace(stato_visivo="normale")),
+            riga("da_fatturare"),
+            riga("fatturato", fatturato=True),
+            riga("normale"),
         ]
         solo_fatt = riepilogo.filtra_per_stato_visivo(righe, "fatturato")
         self.assertEqual([r.occorrenza.stato_visivo for r in solo_fatt], ["fatturato"])
         # Empty/None -> unchanged.
         self.assertIs(riepilogo.filtra_per_stato_visivo(righe, None), righe)
         self.assertIs(riepilogo.filtra_per_stato_visivo(righe, ""), righe)
+
+    def test_filtra_da_fatturare_include_tutte_le_non_fatturate(self):
+        """"da_fatturare" selects every unbilled row of a non-cancelled
+        contract — overdue, approaching AND future alike (the same population
+        the dashboard's card counts) — but never billed or cancelled ones."""
+        def riga(stato_visivo, fatturato=False, disdetto=False):
+            return SimpleNamespace(
+                occorrenza=SimpleNamespace(stato_visivo=stato_visivo, fatturato=fatturato),
+                servizio=SimpleNamespace(disdetto=disdetto),
+            )
+
+        righe = [
+            riga("da_fatturare"),                  # overdue          -> kept
+            riga("in_scadenza"),                   # approaching      -> kept
+            riga("normale"),                       # future, unbilled -> kept
+            riga("fatturato", fatturato=True),     # billed           -> dropped
+            riga("normale", disdetto=True),        # cancelled        -> dropped
+        ]
+        filtrate = riepilogo.filtra_per_stato_visivo(righe, "da_fatturare")
+        self.assertEqual(
+            [r.occorrenza.stato_visivo for r in filtrate],
+            ["da_fatturare", "in_scadenza", "normale"],
+        )
 
 
 class TestFiltriRotteDashboard(unittest.TestCase):
@@ -297,6 +327,16 @@ class TestFiltriRotteServizi(unittest.TestCase):
         # No full-page chrome / filter form in the partial.
         self.assertNotIn('class="filtri"', r.text)
         self.assertNotIn("+ Nuovo servizio", r.text)
+
+    def test_righe_espongono_lo_stato_calcolato(self):
+        """Every row must carry its computed contract state in data-stato: the
+        "nascondi scaduti e disdetti" display preference (client-side, see
+        base.html) hides rows by reading that attribute, so dropping it would
+        silently break the preference."""
+        r = self.client.get("/servizi")
+        stati = re.findall(r'<tr id="servizio-\d+" data-stato="([^"]+)"', r.text)
+        self.assertEqual(len(stati), 3)
+        self.assertEqual(sorted(stati), ["attivo", "attivo", "disdetto"])
 
 
 if __name__ == "__main__":

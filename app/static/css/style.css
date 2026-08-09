@@ -283,6 +283,21 @@ a:hover { color: var(--primary-hover); }
     border: 2px solid var(--surface);
 }
 
+/* Second dot on the funnel icon: the "nascondi scaduti e disdetti" display
+   preference is on. Deliberately a different colour and corner from
+   .icon-btn-badge (active filters), because the two are not the same thing:
+   "Azzera filtri" clears the filters but NOT this preference. */
+.icon-btn-badge-pref {
+    position: absolute;
+    bottom: -3px;
+    right: -3px;
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    background: var(--muted);
+    border: 2px solid var(--surface);
+}
+
 /* Filter dialog: native <dialog>, opened by the funnel icon. The browser
    handles the backdrop, centering and Esc-to-close for free. */
 dialog.filtri-dialog {
@@ -301,6 +316,13 @@ dialog.filtri-dialog::backdrop { background: rgba(0, 0, 0, 0.5); }
 .filtri-dialog .filtri { flex-direction: column; align-items: stretch; gap: 1rem; }
 .filtri-dialog .field { width: 100%; }
 .filtri-dialog-actions { display: flex; justify-content: flex-end; margin-top: 1.25rem; }
+/* Separates the display preference from the filters above it in the dialog. */
+.dialog-sezione {
+    margin-top: 1.25rem;
+    padding-top: 1rem;
+    border-top: 1px solid var(--border);
+}
+.dialog-sezione .field { margin-bottom: 0; }
 
 .muted { color: var(--muted); }
 
@@ -451,6 +473,13 @@ th.col-actions-header {
     gap: 0.5rem;
 }
 
+/* When the header is also sortable, the ⇅/↑/↓ indicator is a ::after
+   pseudo-element and therefore always last in DOM order — reorder the flex
+   items so it lands right after the label instead of after the icon. */
+th.col-actions-header.sortable .th-label { order: 1; }
+th.col-actions-header.sortable::after { order: 2; }
+th.col-actions-header.sortable .col-toggle-btn { order: 3; }
+
 .col-toggle-btn {
     width: 1.5rem;
     height: 1.5rem;
@@ -509,6 +538,9 @@ dialog.colonne-dialog h3 { margin: 0 0 1rem; font-size: 1rem; }
 
 /* Rows hidden by pagination (see applicaPaginazione in base.html). */
 tr.pag-hidden { display: none; }
+/* Rows hidden by the "nascondi scaduti e disdetti" display preference. They
+   are also excluded from the pagination count (see applicaPaginazione). */
+tr.stato-nascosto { display: none; }
 
 /* Text hierarchy within a row: the row's "subject" (customer name) stands
    out, secondary details (referente, cadence, date range) recede so the
