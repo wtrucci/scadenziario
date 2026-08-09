@@ -28,6 +28,20 @@
         </select>
     </div>
 
+    {# --- Referente: subito sotto il cliente --- #}
+    <div class="field">
+        <label for="referente">Referente</label>
+        <input type="text" id="referente" name="referente"
+               value="{{ valori.referente }}" maxlength="200"
+               placeholder="Referenza cliente finale (opzionale)"
+               list="referenti-list" autocomplete="off">
+        <datalist id="referenti-list">
+            {% for r in referenti_esistenti %}
+            <option value="{{ r }}">
+            {% endfor %}
+        </datalist>
+    </div>
+
     {# --- Luogo installazione: subito sotto il cliente, utile per i clienti
          multisede quando si sceglie a colpo d'occhio quale servizio è quale --- #}
     <div class="field">
@@ -142,19 +156,6 @@
         </div>
     </div>
 
-    {# --- Referente / Note --- #}
-    <div class="field">
-        <label for="referente">Referente</label>
-        <input type="text" id="referente" name="referente"
-               value="{{ valori.referente }}" maxlength="200"
-               placeholder="Referenza cliente finale (opzionale)"
-               list="referenti-list" autocomplete="off">
-        <datalist id="referenti-list">
-            {% for r in referenti_esistenti %}
-            <option value="{{ r }}">
-            {% endfor %}
-        </datalist>
-    </div>
     <div class="field">
         <label for="note">Note</label>
         <textarea id="note" name="note" rows="3">{{ valori.note }}</textarea>
