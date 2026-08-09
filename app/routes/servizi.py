@@ -115,6 +115,7 @@ def _valori_da_servizio(s: Servizio) -> dict:
         "disdetto": s.disdetto,
         "referente": s.referente or "",
         "numero_seriale": s.numero_seriale or "",
+        "luogo_installazione": s.luogo_installazione or "",
         "note": s.note or "",
     }
 
@@ -367,6 +368,7 @@ def crea_servizio(
     disdetto: str | None = Form(None),  # checkbox: present when checked
     referente: str = Form(""),
     numero_seriale: str = Form(""),
+    luogo_installazione: str = Form(""),
     note: str = Form(""),
     db: Session = Depends(get_db),
     user: Utente = Depends(require_login),
@@ -378,7 +380,8 @@ def crea_servizio(
         data_inizio=data_inizio, durata_mesi=durata_mesi, cadenza_mesi=cadenza_mesi,
         importo=importo, quantita=quantita, valuta=valuta,
         preavviso_giorni=preavviso_giorni,
-        referente=referente, numero_seriale=numero_seriale, note=note,
+        referente=referente, numero_seriale=numero_seriale,
+        luogo_installazione=luogo_installazione, note=note,
     )
     valori["rinnovo_automatico"] = is_rinnovo
     valori["disdetto"] = is_disdetto
@@ -398,6 +401,7 @@ def crea_servizio(
     db.add(Servizio(
         referente=referente.strip() or None,
         numero_seriale=numero_seriale.strip() or None,
+        luogo_installazione=luogo_installazione.strip() or None,
         note=note.strip() or None,
         rinnovo_automatico=is_rinnovo,
         disdetto=is_disdetto,
@@ -454,6 +458,7 @@ def aggiorna_servizio(
     disdetto: str | None = Form(None),  # checkbox: present when checked
     referente: str = Form(""),
     numero_seriale: str = Form(""),
+    luogo_installazione: str = Form(""),
     note: str = Form(""),
     db: Session = Depends(get_db),
     user: Utente = Depends(require_login),
@@ -466,7 +471,8 @@ def aggiorna_servizio(
         data_inizio=data_inizio, durata_mesi=durata_mesi, cadenza_mesi=cadenza_mesi,
         importo=importo, quantita=quantita, valuta=valuta,
         preavviso_giorni=preavviso_giorni,
-        referente=referente, numero_seriale=numero_seriale, note=note,
+        referente=referente, numero_seriale=numero_seriale,
+        luogo_installazione=luogo_installazione, note=note,
     )
     valori["rinnovo_automatico"] = is_rinnovo
     valori["disdetto"] = is_disdetto
@@ -493,6 +499,7 @@ def aggiorna_servizio(
         setattr(s, field, value)
     s.referente = referente.strip() or None
     s.numero_seriale = numero_seriale.strip() or None
+    s.luogo_installazione = luogo_installazione.strip() or None
     s.note = note.strip() or None
     s.rinnovo_automatico = is_rinnovo
     s.disdetto = is_disdetto

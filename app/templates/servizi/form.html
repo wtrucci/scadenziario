@@ -145,6 +145,12 @@
                placeholder="Numero seriale del dispositivo/software coperto (opzionale)">
     </div>
     <div class="field">
+        <label for="luogo_installazione">Luogo installazione</label>
+        <input type="text" id="luogo_installazione" name="luogo_installazione"
+               value="{{ valori.luogo_installazione }}" maxlength="200"
+               placeholder="Sede/ubicazione, utile per clienti multisede (opzionale)">
+    </div>
+    <div class="field">
         <label for="note">Note</label>
         <textarea id="note" name="note" rows="3">{{ valori.note }}</textarea>
     </div>

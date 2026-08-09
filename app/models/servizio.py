@@ -89,6 +89,9 @@ class Servizio(Base):
     # Optional: serial number of the licensed/covered device or software.
     # Requested capacity was "at least 70 characters"; 100 gives headroom.
     numero_seriale: Mapped[str | None] = mapped_column(String(100))
+    # Optional: which site the service is installed at, for customers with
+    # multiple locations (multisede).
+    luogo_installazione: Mapped[str | None] = mapped_column(String(200))
     note: Mapped[str | None] = mapped_column(Text)
 
     creato_il: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
