@@ -335,6 +335,12 @@ dialog.filtri-dialog::backdrop { background: rgba(0, 0, 0, 0.5); }
     vertical-align: middle;
 }
 
+.btn:disabled {
+    opacity: 0.45;
+    cursor: default;
+    pointer-events: none;
+}
+
 /* Inline text-style button (e.g. delete in table rows) */
 .btn-link {
     background: none;
@@ -415,6 +421,94 @@ th {
 
 tbody tr:last-child td { border-bottom: none; }
 tbody tr:hover { background: var(--table-hover-bg); }
+
+/* Click-to-sort column headers (see the delegated click handler in base.html) */
+th.sortable {
+    cursor: pointer;
+    user-select: none;
+}
+th.sortable:hover { color: var(--text); }
+th.sortable::after {
+    content: "⇅";
+    margin-left: 0.35em;
+    opacity: 0.35;
+    font-size: 0.85em;
+}
+th.sortable[data-dir="asc"]::after { content: "↑"; opacity: 1; }
+th.sortable[data-dir="desc"]::after { content: "↓"; opacity: 1; }
+
+/* Column visibility: hidden th/td, toggled by JS from the saved preference
+   (see applicaColonne in base.html). !important because these cells also
+   carry .col-num/.col-data etc., which don't set display themselves, but
+   keeps the rule unambiguous regardless of what else targets the cell. */
+.col-hidden { display: none !important; }
+
+/* Header cell that also hosts the column-picker icon (last column, "a destra
+   di Azioni"): keep the label and the icon on the same line, icon pinned right. */
+th.col-actions-header {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.col-toggle-btn {
+    width: 1.5rem;
+    height: 1.5rem;
+    flex: none;
+    margin-left: auto;
+}
+.col-toggle-btn .icon { width: 15px; height: 15px; }
+
+dialog.colonne-dialog {
+    width: 100%;
+    max-width: 320px;
+    padding: 1.5rem;
+    background: var(--surface);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.25);
+}
+dialog.colonne-dialog::backdrop { background: rgba(0, 0, 0, 0.5); }
+dialog.colonne-dialog h3 { margin: 0 0 1rem; font-size: 1rem; }
+.colonna-opzione {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.3rem 0;
+    font-size: 0.9rem;
+    cursor: pointer;
+}
+.colonna-opzione input { width: auto; }
+.colonne-dialog-actions { display: flex; justify-content: flex-end; margin-top: 1.25rem; }
+
+/* Pagination bar, one per table (see applicaPaginazione in base.html). */
+.paginazione {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    padding: 0.65rem 0.1rem;
+    font-size: 0.85rem;
+    color: var(--muted);
+}
+.paginazione-size select {
+    width: auto;
+    display: inline-block;
+    padding: 0.35rem 0.5rem;
+    margin-left: 0.3rem;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    font-size: 0.85rem;
+    font-family: inherit;
+    background: var(--surface);
+    color: var(--text);
+}
+.paginazione-nav { display: flex; gap: 0.5rem; }
+
+/* Rows hidden by pagination (see applicaPaginazione in base.html). */
+tr.pag-hidden { display: none; }
 
 /* Text hierarchy within a row: the row's "subject" (customer name) stands
    out, secondary details (referente, cadence, date range) recede so the

@@ -33,6 +33,7 @@ from app.services.occorrenze import (
     Occorrenza,
     calcola_data_fine,
     data_fine_effettiva,
+    durata_mesi_congelata,
     occorrenze_nel_periodo,
     stato_contratto,
 )
@@ -85,6 +86,33 @@ def _imposta_fatturato(
             stato.quantita = None
 
 
+def _fattura_occorrenze_passate(db: Session, servizio: Servizio, oggi: date) -> None:
+    """Mark every occurrence already in the past as billed, at creation time.
+
+    A service is often entered into the system well after it actually
+    started (importing pre-existing licenses/contracts, catching up on
+    equipment installed months ago, ...). Without this, every occurrence
+    between the real start date and today would surface as an overdue
+    "da fatturare" alert forever, which is noise, not a real unpaid
+    invoice — the system only starts "watching" a service from today
+    forward. Only touches occurrences with no existing state row, so it
+    can never override a deliberate fatturato/un-fatturato decision.
+
+    Deliberately NOT called on edits (only on creation, see crea_servizio):
+    re-running this on every save could silently hide a genuinely overdue,
+    already-tracked invoice the user is editing for an unrelated reason.
+    """
+    esistenti = {
+        o.data_occorrenza
+        for o in db.scalars(
+            select(OverrideImporto).where(OverrideImporto.servizio_id == servizio.id)
+        )
+    }
+    for occ in occorrenze_nel_periodo(servizio, servizio.data_inizio, oggi, oggi=oggi):
+        if occ.data_occorrenza <= oggi and occ.data_occorrenza not in esistenti:
+            _imposta_fatturato(db, servizio.id, occ.data_occorrenza, occ, fatturato=True)
+
+
 def _clienti_attivi(db: Session) -> list[Cliente]:
     return db.scalars(select(Cliente).where(Cliente.attivo.is_(True)).order_by(Cliente.nome)).all()
 
@@ -106,6 +134,7 @@ def _valori_da_servizio(s: Servizio) -> dict:
         "tipo": s.tipo.value,
         "data_inizio": s.data_inizio.isoformat(),
         "durata_mesi": str(s.durata_mesi) if s.durata_mesi is not None else "",
+        "durata_rinnovo_mesi": str(s.durata_rinnovo_mesi) if s.durata_rinnovo_mesi is not None else "",
         "rinnovo_automatico": s.rinnovo_automatico,
         "cadenza_mesi": str(s.cadenza_mesi),
         "importo": str(s.importo),
@@ -132,6 +161,7 @@ def _valida(
     tipo_raw: str,
     data_inizio_raw: str,
     durata_mesi_raw: str,
+    durata_rinnovo_mesi_raw: str,
     cadenza_mesi_raw: str,
     importo_raw: str,
     quantita_raw: str,
@@ -193,6 +223,22 @@ def _valida(
                 parsed["data_fine"] = calcola_data_fine(data_inizio, durata_mesi)
     except (ValueError, TypeError):
         errori.append("Durata contratto non valida: inserisci un numero intero di mesi (es. 12).")
+
+    # durata_rinnovo_mesi — optional: empty means "same as durata_mesi" (see
+    # _passo_rinnovo in occorrenze.py). Only meaningful with rinnovo_automatico,
+    # but validated regardless so a stray value is never silently accepted.
+    durata_rinnovo_raw = durata_rinnovo_mesi_raw.strip()
+    if not durata_rinnovo_raw:
+        parsed["durata_rinnovo_mesi"] = None
+    else:
+        try:
+            durata_rinnovo = int(durata_rinnovo_raw)
+            if durata_rinnovo < 1:
+                errori.append("La durata del rinnovo deve essere di almeno 1 mese.")
+            else:
+                parsed["durata_rinnovo_mesi"] = durata_rinnovo
+        except (ValueError, TypeError):
+            errori.append("Durata rinnovo non valida: inserisci un numero intero di mesi (es. 12).")
 
     # cadenza_mesi
     try:
@@ -359,6 +405,7 @@ def crea_servizio(
     tipo: str = Form(""),
     data_inizio: str = Form(""),
     durata_mesi: str = Form(""),
+    durata_rinnovo_mesi: str = Form(""),
     rinnovo_automatico: str | None = Form(None),  # checkbox: present when checked
     cadenza_mesi: str = Form(""),
     importo: str = Form(""),
@@ -377,7 +424,8 @@ def crea_servizio(
     is_disdetto = disdetto is not None
     valori = _valori_da_form(
         cliente_id=cliente_id, descrizione=descrizione, tipo=tipo,
-        data_inizio=data_inizio, durata_mesi=durata_mesi, cadenza_mesi=cadenza_mesi,
+        data_inizio=data_inizio, durata_mesi=durata_mesi,
+        durata_rinnovo_mesi=durata_rinnovo_mesi, cadenza_mesi=cadenza_mesi,
         importo=importo, quantita=quantita, valuta=valuta,
         preavviso_giorni=preavviso_giorni,
         referente=referente, numero_seriale=numero_seriale,
@@ -387,7 +435,8 @@ def crea_servizio(
     valori["disdetto"] = is_disdetto
     errori, parsed = _valida(
         cliente_id_raw=cliente_id, descrizione=descrizione, tipo_raw=tipo,
-        data_inizio_raw=data_inizio, durata_mesi_raw=durata_mesi, cadenza_mesi_raw=cadenza_mesi,
+        data_inizio_raw=data_inizio, durata_mesi_raw=durata_mesi,
+        durata_rinnovo_mesi_raw=durata_rinnovo_mesi, cadenza_mesi_raw=cadenza_mesi,
         importo_raw=importo, quantita_raw=quantita, valuta=valuta,
         preavviso_giorni_raw=preavviso_giorni, db=db,
     )
@@ -398,7 +447,7 @@ def crea_servizio(
              "valori": valori, "errori": errori, **_form_choices(db)},
             status_code=422,
         )
-    db.add(Servizio(
+    nuovo = Servizio(
         referente=referente.strip() or None,
         numero_seriale=numero_seriale.strip() or None,
         luogo_installazione=luogo_installazione.strip() or None,
@@ -406,7 +455,10 @@ def crea_servizio(
         rinnovo_automatico=is_rinnovo,
         disdetto=is_disdetto,
         **parsed,
-    ))
+    )
+    db.add(nuovo)
+    db.flush()  # assigns nuovo.id, needed by _fattura_occorrenze_passate
+    _fattura_occorrenze_passate(db, nuovo, date.today())
     db.commit()
     return RedirectResponse(url="/servizi", status_code=303)
 
@@ -449,6 +501,7 @@ def aggiorna_servizio(
     tipo: str = Form(""),
     data_inizio: str = Form(""),
     durata_mesi: str = Form(""),
+    durata_rinnovo_mesi: str = Form(""),
     rinnovo_automatico: str | None = Form(None),  # checkbox: present when checked
     cadenza_mesi: str = Form(""),
     importo: str = Form(""),
@@ -466,9 +519,19 @@ def aggiorna_servizio(
     s = _get_or_404(db, servizio_id)
     is_rinnovo = rinnovo_automatico is not None
     is_disdetto = disdetto is not None
+
+    # Turning auto-renewal off must freeze the CONTRACT'S CURRENT effective
+    # end date, not silently reset it to the original term's end — computed
+    # from the service as it stood BEFORE today's edits (durata_mesi_congelata
+    # replays the same renewal steps data_fine_effettiva would, so it lands on
+    # the same date). Overrides whatever was typed in "Durata contratto" below.
+    disattiva_rinnovo = s.rinnovo_automatico and not is_rinnovo
+    durata_congelata = durata_mesi_congelata(s, date.today()) if disattiva_rinnovo else None
+
     valori = _valori_da_form(
         cliente_id=cliente_id, descrizione=descrizione, tipo=tipo,
-        data_inizio=data_inizio, durata_mesi=durata_mesi, cadenza_mesi=cadenza_mesi,
+        data_inizio=data_inizio, durata_mesi=durata_mesi,
+        durata_rinnovo_mesi=durata_rinnovo_mesi, cadenza_mesi=cadenza_mesi,
         importo=importo, quantita=quantita, valuta=valuta,
         preavviso_giorni=preavviso_giorni,
         referente=referente, numero_seriale=numero_seriale,
@@ -478,7 +541,8 @@ def aggiorna_servizio(
     valori["disdetto"] = is_disdetto
     errori, parsed = _valida(
         cliente_id_raw=cliente_id, descrizione=descrizione, tipo_raw=tipo,
-        data_inizio_raw=data_inizio, durata_mesi_raw=durata_mesi, cadenza_mesi_raw=cadenza_mesi,
+        data_inizio_raw=data_inizio, durata_mesi_raw=durata_mesi,
+        durata_rinnovo_mesi_raw=durata_rinnovo_mesi, cadenza_mesi_raw=cadenza_mesi,
         importo_raw=importo, quantita_raw=quantita, valuta=valuta,
         preavviso_giorni_raw=preavviso_giorni, db=db,
     )
@@ -495,6 +559,9 @@ def aggiorna_servizio(
              **choices},
             status_code=422,
         )
+    if durata_congelata is not None:
+        parsed["durata_mesi"] = durata_congelata
+        parsed["data_fine"] = calcola_data_fine(parsed["data_inizio"], durata_congelata)
     for field, value in parsed.items():
         setattr(s, field, value)
     s.referente = referente.strip() or None

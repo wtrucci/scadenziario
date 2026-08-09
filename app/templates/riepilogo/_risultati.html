@@ -19,17 +19,19 @@
             Segna tutto fatturato
         </button>
     </h3>
-    <table class="table-servizi">
+    <table class="table-servizi" data-table-id="riepilogo">
         <thead>
             <tr>
-                <th>Descrizione</th>
+                <th class="sortable">Descrizione</th>
                 <th>Tipo</th>
                 <th>Scadenza</th>
                 <th>Referente</th>
                 <th class="col-num">Qtà</th>
                 <th class="col-num">Importo unit.</th>
                 <th class="col-num">Totale</th>
-                <th></th>
+                <th class="col-actions-header">
+                    {% include "partials/_col_toggle_btn.html" %}
+                </th>
             </tr>
         </thead>
         <tbody>

@@ -93,7 +93,19 @@ def stato_contratto(servizio: Servizio, oggi: date | None = None) -> str:
         return "disdetto"
     if oggi is None:
         oggi = date.today()
-    fine = data_fine_effettiva(servizio, riferimento=oggi)
+    if (
+        not servizio.rinnovo_automatico
+        and servizio.durata_mesi
+        and servizio.durata_mesi <= servizio.cadenza_mesi
+    ):
+        # One-off contract (a single occurrence, which falls on data_inizio -
+        # see the class docstring): with no renewal, data_fine can sit many
+        # months after data_inizio without any real event happening in
+        # between, so it would make the badge lag behind the one date that
+        # actually matters here. Use the occurrence's own date instead.
+        fine = servizio.data_inizio
+    else:
+        fine = data_fine_effettiva(servizio, riferimento=oggi)
     if fine < oggi:
         return "scaduto"
     if fine <= oggi + timedelta(days=servizio.preavviso_giorni):
@@ -130,23 +142,59 @@ def calcola_data_fine(data_inizio: date, durata_mesi: int) -> date:
     return aggiungi_mesi(data_inizio, durata_mesi) - timedelta(days=1)
 
 
+def _passo_rinnovo(servizio: Servizio) -> int:
+    """Length in months of each renewal block: ``durata_rinnovo_mesi`` if set
+    (an initial term that differs from its renewals, e.g. 36 months up front
+    then 12-month yearly renewals), otherwise the same as the initial
+    ``durata_mesi``."""
+    return servizio.durata_rinnovo_mesi or servizio.durata_mesi
+
+
 def data_fine_effettiva(servizio: Servizio, riferimento: date) -> date:
     """The contract's effective end date, accounting for automatic renewal.
 
     Without auto-renewal (``rinnovo_automatico=False``, the default), this is
     simply ``servizio.data_fine``. With auto-renewal, the contract rolls
-    forward one ``durata_mesi``-long block at a time whenever it would
-    otherwise already have expired, so it always covers at least up to
+    forward one renewal block at a time (see ``_passo_rinnovo``) whenever it
+    would otherwise already have expired, so it always covers at least up to
     ``riferimento``. Nothing is persisted: like occurrences themselves, the
-    renewed end date is computed on the fly from data_fine + durata_mesi, so
-    no background job is needed to "advance" it.
+    renewed end date is computed on the fly from data_fine + the renewal
+    step, so no background job is needed to "advance" it.
     """
     fine = servizio.data_fine
     if not servizio.rinnovo_automatico or not servizio.durata_mesi:
         return fine
+    passo = _passo_rinnovo(servizio)
     while fine < riferimento:
-        fine = calcola_data_fine(fine + timedelta(days=1), servizio.durata_mesi)
+        fine = calcola_data_fine(fine + timedelta(days=1), passo)
     return fine
+
+
+def durata_mesi_congelata(servizio: Servizio, riferimento: date) -> int:
+    """The single ``durata_mesi`` value that reproduces the contract's
+    CURRENT effective end date (as of ``riferimento``) with auto-renewal
+    turned off.
+
+    Used when the user disables ``rinnovo_automatico`` on an auto-renewing
+    contract: without this, saving the form would recompute data_fine from
+    the ORIGINAL durata_mesi alone, snapping the contract back to its first
+    term and discarding every renewal already elapsed. Month-arithmetic
+    composes additively (aggiungi_mesi never drifts — see the module
+    docstring), so accumulating the same steps data_fine_effettiva would
+    take, instead of it, gives back an equivalent single duration: replaying
+    calcola_data_fine(data_inizio, durata_mesi_congelata(...)) reproduces the
+    exact effective end date, whether or not renewal blocks were a different
+    length than the initial term (see _passo_rinnovo).
+    """
+    durata_totale = servizio.durata_mesi
+    fine = servizio.data_fine
+    if not servizio.rinnovo_automatico or not fine:
+        return durata_totale
+    passo = _passo_rinnovo(servizio)
+    while fine < riferimento:
+        fine = calcola_data_fine(fine + timedelta(days=1), passo)
+        durata_totale += passo
+    return durata_totale
 
 
 def occorrenze_nel_periodo(

@@ -28,7 +28,7 @@ TUTTO = (date(2000, 1, 1), date(2100, 12, 31))
 
 def _servizio(data_inizio, data_fine, cadenza_mesi, *, importo="10.00", quantita=1,
               durata_mesi=None, rinnovo_automatico=False, disdetto=False,
-              preavviso_giorni=30):
+              preavviso_giorni=30, durata_rinnovo_mesi=None):
     return Servizio(
         cliente_id=1,
         descrizione="Test",
@@ -37,6 +37,7 @@ def _servizio(data_inizio, data_fine, cadenza_mesi, *, importo="10.00", quantita
         data_fine=data_fine,
         durata_mesi=durata_mesi,
         rinnovo_automatico=rinnovo_automatico,
+        durata_rinnovo_mesi=durata_rinnovo_mesi,
         cadenza_mesi=cadenza_mesi,
         importo=Decimal(importo),
         quantita=quantita,
@@ -337,6 +338,77 @@ class TestDurataERinnovo(unittest.TestCase):
                       durata_mesi=12, rinnovo_automatico=False)
         occ = occorrenze.occorrenze_nel_periodo(s, date(2026, 3, 1), date(2026, 3, 31))
         self.assertEqual(occ, [])
+
+    # A different renewal-block length than the initial term (e.g. 36 months
+    # up front, then 12-month yearly renewals) must be honoured by every
+    # renewal step after the first, not just the first one.
+    def test_rinnovo_con_durata_diversa_dal_periodo_iniziale(self):
+        s = _servizio(date(2022, 3, 1), date(2025, 2, 28), cadenza_mesi=12,
+                      durata_mesi=36, rinnovo_automatico=True, durata_rinnovo_mesi=12)
+        # First renewal block after the 36-month initial term: 12 months, not 36.
+        self.assertEqual(
+            occorrenze.data_fine_effettiva(s, riferimento=date(2025, 6, 1)),
+            date(2026, 2, 28),
+        )
+        # Second renewal block, same 12-month step.
+        self.assertEqual(
+            occorrenze.data_fine_effettiva(s, riferimento=date(2026, 6, 1)),
+            date(2027, 2, 28),
+        )
+
+    # durata_rinnovo_mesi unset falls back to durata_mesi (today's behaviour,
+    # unaffected by the new field).
+    def test_rinnovo_senza_durata_dedicata_usa_durata_mesi(self):
+        s = _servizio(date(2025, 1, 1), date(2025, 12, 31), cadenza_mesi=1,
+                      durata_mesi=12, rinnovo_automatico=True, durata_rinnovo_mesi=None)
+        self.assertEqual(
+            occorrenze.data_fine_effettiva(s, riferimento=date(2026, 6, 1)),
+            date(2026, 12, 31),
+        )
+
+
+class TestDurataMesiCongelata(unittest.TestCase):
+    """durata_mesi_congelata: the value that freezes the CURRENT effective
+    end date in place of the original term, when auto-renewal is turned off
+    (see aggiorna_servizio in app/routes/servizi.py)."""
+
+    # No renewal elapsed yet: freezing changes nothing.
+    def test_nessun_rinnovo_trascorso(self):
+        s = _servizio(date(2025, 1, 1), date(2025, 12, 31), cadenza_mesi=1,
+                      durata_mesi=12, rinnovo_automatico=True)
+        congelata = occorrenze.durata_mesi_congelata(s, riferimento=date(2025, 6, 1))
+        self.assertEqual(congelata, 12)
+        self.assertEqual(occorrenze.calcola_data_fine(s.data_inizio, congelata), s.data_fine)
+
+    # Several elapsed renewal blocks must all be folded into a single
+    # durata_mesi that reproduces the exact same effective end date.
+    def test_diversi_rinnovi_trascorsi(self):
+        s = _servizio(date(2022, 3, 1), date(2023, 2, 28), cadenza_mesi=12,
+                      durata_mesi=12, rinnovo_automatico=True)
+        riferimento = date(2026, 8, 9)
+        atteso = occorrenze.data_fine_effettiva(s, riferimento)
+        congelata = occorrenze.durata_mesi_congelata(s, riferimento)
+        self.assertEqual(occorrenze.calcola_data_fine(s.data_inizio, congelata), atteso)
+        # This is the bug being fixed: freezing must NOT collapse back to the
+        # original single-year term.
+        self.assertNotEqual(atteso, s.data_fine)
+
+    # A renewal step different from the initial term (36 then 12-month
+    # blocks) must still fold into one consistent frozen duration.
+    def test_con_durata_rinnovo_diversa(self):
+        s = _servizio(date(2022, 3, 1), date(2025, 2, 28), cadenza_mesi=12,
+                      durata_mesi=36, rinnovo_automatico=True, durata_rinnovo_mesi=12)
+        riferimento = date(2027, 6, 1)
+        atteso = occorrenze.data_fine_effettiva(s, riferimento)
+        congelata = occorrenze.durata_mesi_congelata(s, riferimento)
+        self.assertEqual(occorrenze.calcola_data_fine(s.data_inizio, congelata), atteso)
+
+    # Without rinnovo_automatico there is nothing to freeze: durata_mesi is
+    # returned unchanged.
+    def test_senza_rinnovo_automatico_invariata(self):
+        s = _servizio(date(2025, 1, 1), date(2025, 12, 31), cadenza_mesi=1,
+                      durata_mesi=12, rinnovo_automatico=False)
+        self.assertEqual(occorrenze.durata_mesi_congelata(s, riferimento=date(2027, 1, 1)), 12)
 
 
 class TestStatoContratto(unittest.TestCase):

@@ -103,6 +103,241 @@
                 syncThemeToggleTitle();
             });
         });
+
+        // Click-to-sort table columns (th.sortable): alphabetical, toggles
+        // ascending/descending on repeated clicks. Delegated on document (not
+        // bound per-th) so it keeps working after HTMX swaps new table rows
+        // in, with no re-init step needed. Sorts only the clicked table's own
+        // tbody rows, so multiple tables on one page (e.g. one per customer
+        // in the riepilogo) sort independently.
+        document.addEventListener("click", function (e) {
+            if (e.target.closest(".col-toggle-btn")) return;
+            var th = e.target.closest("th.sortable");
+            if (!th) return;
+            var tabella = th.closest("table");
+            var corpo = tabella.tBodies[0];
+            if (!corpo) return;
+            var indice = Array.prototype.indexOf.call(th.parentNode.children, th);
+            var crescente = th.getAttribute("data-dir") !== "asc";
+
+            tabella.querySelectorAll("th.sortable").forEach(function (altro) {
+                if (altro !== th) altro.removeAttribute("data-dir");
+            });
+            th.setAttribute("data-dir", crescente ? "asc" : "desc");
+
+            // A cell can carry data-sort (e.g. an ISO date) to sort by a value
+            // different from what's displayed — plain text sorting on
+            // "24/08/2026 – 23/08/2027" would order by day-of-month first,
+            // not chronologically.
+            function chiaveOrdinamento(cella) {
+                var attr = cella.getAttribute("data-sort");
+                if (attr !== null) return attr.trim().toLowerCase();
+                return (cella.textContent || "").trim().toLowerCase();
+            }
+
+            var righe = Array.prototype.slice.call(corpo.querySelectorAll("tr"));
+            righe.sort(function (a, b) {
+                var ta = chiaveOrdinamento(a.children[indice]);
+                var tb = chiaveOrdinamento(b.children[indice]);
+                if (ta < tb) return crescente ? -1 : 1;
+                if (ta > tb) return crescente ? 1 : -1;
+                return 0;
+            });
+            righe.forEach(function (riga) { corpo.appendChild(riga); });
+
+            // Re-sync pagination: row order changed, so which rows fall on
+            // which page changed too. Back to page 1 on a fresh sort.
+            if (tabella.hasAttribute("data-table-id")) {
+                tabella._paginaCorrente = 1;
+                applicaPaginazione(tabella);
+            }
+        });
+
+        // ---------------------------------------------------------------
+        // Column visibility + pagination for data tables (servizi, dashboard,
+        // riepilogo). Both are pure client-side (the tables are small) and
+        // persisted in localStorage so the choice survives reloads/future
+        // visits. A table opts in via data-table-id="servizi"/"dashboard"/
+        // "riepilogo" (see the relevant _risultati.html); riepilogo has one
+        // <table> per customer, all sharing the same id, so a column choice
+        // or page-size change applies to all of them at once.
+
+        var COLONNE_KEY_PREFIX = "scadenziario:colonneNascoste:";
+        var PAGE_SIZE_KEY = "scadenziario:righePerPagina";
+        var PAGE_SIZES = [10, 50, 100];
+
+        function colonneNascoste(tableId) {
+            try {
+                var raw = localStorage.getItem(COLONNE_KEY_PREFIX + tableId);
+                return raw ? JSON.parse(raw) : [];
+            } catch (e) {
+                return [];
+            }
+        }
+
+        function salvaColonneNascoste(tableId, indici) {
+            localStorage.setItem(COLONNE_KEY_PREFIX + tableId, JSON.stringify(indici));
+        }
+
+        function righePerPaginaCorrente() {
+            var v = parseInt(localStorage.getItem(PAGE_SIZE_KEY), 10);
+            return PAGE_SIZES.indexOf(v) !== -1 ? v : 50;
+        }
+
+        function applicaColonne(tabella) {
+            var tableId = tabella.getAttribute("data-table-id");
+            if (!tableId || !tabella.tHead) return;
+            var nascoste = colonneNascoste(tableId);
+            var righeIntestazione = Array.prototype.slice.call(tabella.tHead.rows);
+            righeIntestazione.forEach(function (tr) {
+                Array.prototype.forEach.call(tr.children, function (th, i) {
+                    th.classList.toggle("col-hidden", nascoste.indexOf(i) !== -1);
+                });
+            });
+            if (tabella.tBodies[0]) {
+                Array.prototype.forEach.call(tabella.tBodies[0].rows, function (tr) {
+                    Array.prototype.forEach.call(tr.children, function (td, i) {
+                        td.classList.toggle("col-hidden", nascoste.indexOf(i) !== -1);
+                    });
+                });
+            }
+        }
+
+        function apriDialogoColonne(tabella) {
+            var tableId = tabella.getAttribute("data-table-id");
+            var headerRow = tabella.tHead.rows[0];
+            var nascoste = colonneNascoste(tableId);
+
+            var dialog = document.createElement("dialog");
+            dialog.className = "colonne-dialog";
+
+            var titolo = document.createElement("h3");
+            titolo.textContent = "Colonne visibili";
+            dialog.appendChild(titolo);
+
+            Array.prototype.forEach.call(headerRow.children, function (th, i) {
+                // Skip the column-picker button's own (usually label-less) cell.
+                if (th.classList.contains("col-actions-header") && !th.firstChild.textContent.trim() && th.children.length <= 1) return;
+                var testo = th.childNodes.length
+                    ? Array.prototype.map.call(th.childNodes, function (n) {
+                          return n.nodeType === Node.TEXT_NODE ? n.textContent : "";
+                      }).join("").trim()
+                    : th.textContent.trim();
+                if (!testo) testo = "Colonna " + (i + 1);
+
+                var label = document.createElement("label");
+                label.className = "colonna-opzione";
+                var checkbox = document.createElement("input");
+                checkbox.type = "checkbox";
+                checkbox.checked = nascoste.indexOf(i) === -1;
+                checkbox.addEventListener("change", function () {
+                    var attuali = colonneNascoste(tableId);
+                    if (checkbox.checked) {
+                        attuali = attuali.filter(function (n) { return n !== i; });
+                    } else if (attuali.indexOf(i) === -1) {
+                        attuali.push(i);
+                    }
+                    salvaColonneNascoste(tableId, attuali);
+                    document.querySelectorAll('table[data-table-id="' + tableId + '"]').forEach(applicaColonne);
+                });
+                label.appendChild(checkbox);
+                label.appendChild(document.createTextNode(testo));
+                dialog.appendChild(label);
+            });
+
+            var azioni = document.createElement("div");
+            azioni.className = "colonne-dialog-actions";
+            var chiudi = document.createElement("button");
+            chiudi.type = "button";
+            chiudi.className = "btn btn-secondary";
+            chiudi.textContent = "Chiudi";
+            chiudi.addEventListener("click", function () { dialog.close(); });
+            azioni.appendChild(chiudi);
+            dialog.appendChild(azioni);
+
+            dialog.addEventListener("close", function () { dialog.remove(); });
+            document.body.appendChild(dialog);
+            dialog.showModal();
+        }
+
+        document.addEventListener("click", function (e) {
+            var btn = e.target.closest(".col-toggle-btn");
+            if (!btn) return;
+            var tabella = btn.closest("table");
+            if (tabella) apriDialogoColonne(tabella);
+        });
+
+        function applicaPaginazione(tabella) {
+            var corpo = tabella.tBodies[0];
+            if (!corpo) return;
+            var righe = Array.prototype.slice.call(corpo.rows);
+            var dimensione = righePerPaginaCorrente();
+            var totale = righe.length;
+            var totalePagine = Math.max(1, Math.ceil(totale / dimensione));
+            var pagina = tabella._paginaCorrente || 1;
+            if (pagina > totalePagine) pagina = totalePagine;
+            tabella._paginaCorrente = pagina;
+
+            righe.forEach(function (tr, i) {
+                var paginaRiga = Math.floor(i / dimensione) + 1;
+                tr.classList.toggle("pag-hidden", paginaRiga !== pagina);
+            });
+
+            renderControlliPaginazione(tabella, pagina, totalePagine, totale, dimensione);
+        }
+
+        function renderControlliPaginazione(tabella, pagina, totalePagine, totale, dimensione) {
+            var footer = tabella._paginazioneFooter;
+            if (!footer || !footer.isConnected) {
+                footer = document.createElement("div");
+                footer.className = "paginazione";
+                tabella.insertAdjacentElement("afterend", footer);
+                tabella._paginazioneFooter = footer;
+            }
+            footer.innerHTML =
+                '<label class="paginazione-size">Righe per pagina:' +
+                '<select class="pagina-size-select">' +
+                PAGE_SIZES.map(function (n) {
+                    return '<option value="' + n + '"' + (n === dimensione ? " selected" : "") + '>' + n + "</option>";
+                }).join("") +
+                "</select></label>" +
+                '<span class="paginazione-info">Pagina ' + pagina + " di " + totalePagine + " (" + totale + " risultati)</span>" +
+                '<span class="paginazione-nav">' +
+                '<button type="button" class="btn btn-secondary pagina-prec"' + (pagina <= 1 ? " disabled" : "") + ">&larr; Precedente</button>" +
+                '<button type="button" class="btn btn-secondary pagina-succ"' + (pagina >= totalePagine ? " disabled" : "") + ">Successiva &rarr;</button>" +
+                "</span>";
+        }
+
+        document.addEventListener("click", function (e) {
+            var prec = e.target.closest(".pagina-prec");
+            var succ = e.target.closest(".pagina-succ");
+            if (!prec && !succ) return;
+            var footer = (prec || succ).closest(".paginazione");
+            var tabella = footer.previousElementSibling;
+            if (!tabella || !tabella.hasAttribute("data-table-id")) return;
+            tabella._paginaCorrente = (tabella._paginaCorrente || 1) + (prec ? -1 : 1);
+            applicaPaginazione(tabella);
+        });
+
+        document.addEventListener("change", function (e) {
+            var sel = e.target.closest(".pagina-size-select");
+            if (!sel) return;
+            localStorage.setItem(PAGE_SIZE_KEY, sel.value);
+            document.querySelectorAll("table[data-table-id]").forEach(function (t) {
+                t._paginaCorrente = 1;
+                applicaPaginazione(t);
+            });
+        });
+
+        function initTabelleDati(root) {
+            root.querySelectorAll("table[data-table-id]").forEach(function (tabella) {
+                applicaColonne(tabella);
+                tabella._paginaCorrente = 1;
+                applicaPaginazione(tabella);
+            });
+        }
+        document.addEventListener("DOMContentLoaded", function () { initTabelleDati(document); });
+        document.addEventListener("htmx:afterSwap", function (e) { initTabelleDati(e.target); });
     </script>
 </body>
 </html>

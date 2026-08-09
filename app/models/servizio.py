@@ -59,9 +59,14 @@ class Servizio(Base):
     # that predate this field; new/edited services always set it.
     durata_mesi: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
-    # If True, the contract auto-renews for another durata_mesi block each time
-    # it expires (see the class docstring and data_fine_effettiva).
+    # If True, the contract auto-renews for another block each time it expires
+    # (see the class docstring and data_fine_effettiva). Each renewal block is
+    # durata_rinnovo_mesi long if set, otherwise durata_mesi (the common case:
+    # renewals are the same length as the initial term). This lets an initial
+    # term differ from its renewals — e.g. a 36-month first term followed by
+    # 12-month yearly renewals.
     rinnovo_automatico: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    durata_rinnovo_mesi: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
     # Billing cadence in months (1 = monthly, 3 = quarterly, 6 = half-yearly,
     # 12 = yearly, ...). Replaces the old `ricorrenza` enum; there is no longer

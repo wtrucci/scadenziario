@@ -9,13 +9,16 @@
 </div>
 
 {% if clienti %}
-<table>
+<table data-table-id="clienti">
     <thead>
         <tr>
-            <th>Nome</th>
+            <th class="sortable">Nome</th>
             <th>Note</th>
-            <th>Attivo</th>
-            <th>Azioni</th>
+            <th class="sortable">Attivo</th>
+            <th class="col-actions-header">
+                Azioni
+                {% include "partials/_col_toggle_btn.html" %}
+            </th>
         </tr>
     </thead>
     <tbody>

@@ -45,7 +45,7 @@
     {# --- Luogo installazione: subito sotto il cliente, utile per i clienti
          multisede quando si sceglie a colpo d'occhio quale servizio è quale --- #}
     <div class="field">
-        <label for="luogo_installazione">Luogo installazione</label>
+        <label for="luogo_installazione">Sede</label>
         <input type="text" id="luogo_installazione" name="luogo_installazione"
                value="{{ valori.luogo_installazione }}" maxlength="200"
                placeholder="Sede/ubicazione, utile per clienti multisede (opzionale)">
@@ -107,8 +107,24 @@
     <div class="field field-inline">
         <input type="checkbox" id="rinnovo_automatico" name="rinnovo_automatico"
                {% if valori.rinnovo_automatico %}checked{% endif %}>
-        <label for="rinnovo_automatico">Rinnovo automatico alla scadenza (di un'altra durata contratto)</label>
+        <label for="rinnovo_automatico">Rinnovo automatico alla scadenza</label>
     </div>
+    <div class="field">
+        <label for="durata_rinnovo_mesi">Durata rinnovo (mesi)</label>
+        <input type="number" id="durata_rinnovo_mesi" name="durata_rinnovo_mesi"
+               value="{{ valori.durata_rinnovo_mesi }}" min="1" step="1">
+        <small class="muted">
+            Solo se il rinnovo automatico ha una durata diversa dal contratto iniziale
+            (es. 36 mesi iniziali, poi rinnovi annuali di 12). Lascia vuoto per usare
+            la stessa durata del contratto.
+        </small>
+    </div>
+    {% if servizio is defined and servizio.rinnovo_automatico %}
+    <p class="muted">
+        Se togli la spunta "Rinnovo automatico" e salvi, la scadenza resta quella
+        raggiunta ad oggi con i rinnovi già maturati (non torna al primo periodo).
+    </p>
+    {% endif %}
 
     {# --- Stato: Attivo/In scadenza/Scaduto si calcolano dalle date (vedi
          stato_contratto in app/services/occorrenze.py) e non si scelgono qui.
