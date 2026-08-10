@@ -149,6 +149,17 @@ le scelte tecniche quando non sono banali.
     vecchio Enum `ricorrenza`. NON esistono più servizi "una tantum": tutto è
     ricorrente (per un pagamento singolo si imposta durata_mesi <= cadenza_mesi,
     così solo la prima occorrenza ricade nel periodo del contratto).
+    La cadenza vale DENTRO ciascun periodo contrattuale, non è un passo fisso
+    da data_inizio (vedi Occorrenza): è questo che distingue i due casi che
+    con `durata_mesi=36, cadenza=12` sarebbero altrimenti indistinguibili.
+    - **Periodo pagato anticipatamente** (es. licenza triennale acquistata
+      subito, poi rinnovi annuali): `cadenza_mesi = durata_mesi` (36) e
+      `durata_rinnovo_mesi = 12`. Una sola fattura all'inizio, poi una per
+      ogni rinnovo. L'invito a fatturare NON deve mai comparire dentro i 36
+      mesi già pagati.
+    - **Periodo rateizzato** (contratto triennale fatturato una volta
+      all'anno): `cadenza_mesi = 12`, `durata_mesi = 36` → 3 fatture dentro
+      il periodo.
   - **importo** è il prezzo unitario di default di OGNI occorrenza; il totale
     di un'occorrenza è `quantita * importo` salvo override (vedi sotto). La
     quantità serve per servizi a postazione/licenza (es. antivirus).
@@ -156,12 +167,24 @@ le scelte tecniche quando non sono banali.
     diverso dal cliente finale. Campo testuale opzionale.
 
 - **Occorrenza** (concetto CALCOLATO, NON una tabella): una singola scadenza
-  fatturabile. Le occorrenze si generano al volo partendo da data_inizio e
-  aggiungendo cadenza_mesi ripetutamente, finché la data <= data_fine EFFETTIVA
-  (`data_fine_effettiva`: con rinnovo_automatico può superare la data_fine
-  storicizzata sul DB). ECCEZIONE: un contratto SENZA rinnovo_automatico e non
-  disdetto genera UNA occorrenza in più oltre la data_fine, la "proposta di
-  rinnovo" (vedi rinnovo_automatico sopra).
+  fatturabile. Le occorrenze si generano al volo percorrendo il contratto un
+  PERIODO alla volta — il periodo iniziale, poi ogni blocco di rinnovo — e
+  dentro ciascun periodo si ripetono ogni cadenza_mesi a partire dall'inizio
+  DI QUEL periodo, finché restano dentro il periodo stesso. I blocchi si
+  affiancano esattamente come `data_fine_effettiva` fa avanzare la fine (con
+  rinnovo_automatico può superare la data_fine storicizzata sul DB).
+  ECCEZIONE: un contratto SENZA rinnovo_automatico e non disdetto genera UNA
+  occorrenza in più oltre la data_fine, la "proposta di rinnovo" (vedi
+  rinnovo_automatico sopra), che cade sul passo di cadenza successivo alla
+  fine (non necessariamente data_fine+1: le righe storiche possono avere una
+  data_fine qualsiasi).
+  - L'ancoraggio al periodo, invece di un passo fisso da data_inizio, è ciò
+    che rende corretto un periodo pagato anticipatamente: un periodo più
+    corto della cadenza produce UNA occorrenza, all'inizio. Con un passo
+    fisso, un blocco di rinnovo più corto del periodo iniziale verrebbe
+    scavalcato e non fatturato mai (perdita di fatturato silenziosa).
+    Quando i rinnovi durano quanto il periodo iniziale — il caso comune, e
+    ogni contratto senza durata_rinnovo_mesi — le due cose coincidono.
   - Ogni occorrenza cade nel **giorno del mese di data_inizio** (es. inizio il
     15 → ogni occorrenza il giorno 15 del suo mese). Se un mese non ha quel
     giorno (es. il 31 a febbraio), usare l'ultimo giorno valido del mese.

@@ -13,7 +13,7 @@ Run with:  python -m unittest discover -s tests
 from __future__ import annotations
 
 import unittest
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal
 
 import app.models  # noqa: F401  (registers mappers / relationships)
@@ -380,6 +380,63 @@ class TestDurataERinnovo(unittest.TestCase):
             occorrenze.data_fine_effettiva(s, riferimento=date(2026, 6, 1)),
             date(2026, 12, 31),
         )
+
+
+class TestPeriodoPagatoAnticipato(unittest.TestCase):
+    """A multi-year term paid UP FRONT, renewing in shorter blocks.
+
+    The real case: a 3-year Fortinet licence bought outright, renewed yearly
+    afterwards. Occurrences are anchored to each contractual PERIOD (initial
+    term, then every renewal block), not stepped from data_inizio forever, so
+    a period shorter than the cadence bills once at its start.
+    """
+
+    # 36 months paid up front (cadenza = the whole term), then yearly renewals.
+    def _licenza_triennale(self):
+        return _servizio(date(2025, 10, 14), date(2028, 10, 13), cadenza_mesi=36,
+                         durata_mesi=36, rinnovo_automatico=True,
+                         durata_rinnovo_mesi=12)
+
+    def test_nessuna_fattura_dentro_il_periodo_gia_pagato(self):
+        """The bug this class exists for: billing must start at the END of the
+        36 months, never inside them."""
+        occ = _date(occorrenze.occorrenze_nel_periodo(
+            self._licenza_triennale(), date(2025, 1, 1), date(2028, 10, 13)))
+        self.assertEqual(occ, [date(2025, 10, 14)])
+
+    def test_ogni_rinnovo_annuale_viene_fatturato(self):
+        """Every 12-month renewal block must bill: stepping by the 36-month
+        cadence would skip 2029 and 2030 entirely — silently unbilled
+        revenue."""
+        occ = _date(occorrenze.occorrenze_nel_periodo(
+            self._licenza_triennale(), date(2025, 1, 1), date(2031, 12, 31)))
+        self.assertEqual(occ, [
+            date(2025, 10, 14),  # bought up front, covers 36 months
+            date(2028, 10, 14),  # 1st yearly renewal
+            date(2029, 10, 14),  # 2nd
+            date(2030, 10, 14),  # 3rd
+            date(2031, 10, 14),  # 4th
+        ])
+
+    def test_il_contratto_resta_coperto_ad_ogni_occorrenza(self):
+        """Cross-check against data_fine_effettiva: each renewal occurrence
+        must fall exactly on the day the previous block ends + 1, so periods
+        and effective end date never drift apart."""
+        s = self._licenza_triennale()
+        for data_occ in (date(2028, 10, 14), date(2029, 10, 14), date(2030, 10, 14)):
+            fine_precedente = occorrenze.data_fine_effettiva(
+                s, riferimento=data_occ - timedelta(days=1))
+            self.assertEqual(fine_precedente + timedelta(days=1), data_occ)
+
+    def test_rateizzazione_dentro_il_periodo_resta_possibile(self):
+        """The opposite case must keep working: a 36-month term genuinely
+        billed once a year still produces one occurrence per year."""
+        s = _servizio(date(2025, 10, 14), date(2028, 10, 13), cadenza_mesi=12,
+                      durata_mesi=36, rinnovo_automatico=True)
+        occ = _date(occorrenze.occorrenze_nel_periodo(
+            s, date(2025, 1, 1), date(2028, 10, 13)))
+        self.assertEqual(
+            occ, [date(2025, 10, 14), date(2026, 10, 14), date(2027, 10, 14)])
 
 
 class TestPropostaRinnovo(unittest.TestCase):
