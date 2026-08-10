@@ -537,6 +537,51 @@ dialog.colonne-dialog h3 { margin: 0 0 1rem; font-size: 1rem; }
 .paginazione-nav { display: flex; gap: 0.5rem; }
 
 /* Rows hidden by pagination (see applicaPaginazione in base.html). */
+/* Live preview of the occurrences a service's dates produce (see the script in
+   servizi/form.html). Makes "how many invoices am I creating?" visible while
+   typing, instead of two years later on the dashboard. */
+.anteprima-titolo {
+    display: block;
+    font-size: 0.85rem;
+    font-weight: 500;
+    margin-bottom: 0.35rem;
+}
+.anteprima-occorrenze {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 0.75rem 0.9rem;
+    font-size: 0.88rem;
+}
+.anteprima-lista { list-style: none; margin: 0; padding: 0; }
+.anteprima-lista li {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    padding: 0.2rem 0;
+}
+.anteprima-data { font-variant-numeric: tabular-nums; }
+.anteprima-altre { color: var(--muted); font-size: 0.83rem; padding: 0.2rem 0; }
+.anteprima-tag {
+    font-size: 0.72rem;
+    padding: 0.05rem 0.4rem;
+    border-radius: 3px;
+    background: var(--off-bg);
+    color: var(--off-text);
+}
+.anteprima-tag-rinnovo { background: var(--badge-tipo-bg); color: var(--badge-tipo-text); }
+.anteprima-tag-proposta { background: var(--badge-warn-bg); color: var(--badge-warn-text); }
+/* Informational, not a warning: instalment billing is a legitimate choice and
+   the app cannot tell it apart from a mis-entry — see the comment in form.html. */
+.anteprima-nota {
+    margin: 0 0 0.5rem;
+    padding: 0.5rem 0.65rem;
+    border-radius: 6px;
+    background: var(--badge-tipo-bg);
+    color: var(--badge-tipo-text);
+}
+.anteprima-ok { margin: 0 0 0.5rem; color: var(--muted); }
+
 tr.pag-hidden { display: none; }
 /* Rows hidden by the "nascondi scaduti e disdetti" display preference. They
    are also excluded from the pagination count (see applicaPaginazione). */

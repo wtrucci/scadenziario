@@ -153,6 +153,19 @@
         </div>
     </div>
 
+    {# Live preview of the occurrences these dates produce. It exists because
+       cadenza/durata alone don't make it obvious how many invoices you are
+       creating: entering a 36-month licence paid up front as cadenza=12
+       silently schedules three invoices inside a period the client already
+       paid. Seeing the dates makes that visible while you type. The JS below
+       mirrors occorrenze_nel_periodo (period-anchored). #}
+    <div class="field">
+        <span class="anteprima-titolo">Fatture che verranno generate</span>
+        <div id="anteprima-occorrenze" class="anteprima-occorrenze">
+            <span class="muted">Compila data inizio, durata e cadenza.</span>
+        </div>
+    </div>
+
     {# --- Importo / Quantità / Valuta --- #}
     <div class="field-row-3">
         <div class="field">
@@ -197,25 +210,123 @@
             return new Date(nuovoAnno, nuovoMese - 1, Math.min(p[2], ultimoGiorno));
         }
 
+        function iso(d) {
+            return d.getFullYear() + "-" +
+                   String(d.getMonth() + 1).padStart(2, "0") + "-" +
+                   String(d.getDate()).padStart(2, "0");
+        }
+        function itaDate(d) {
+            return String(d.getDate()).padStart(2, "0") + "/" +
+                   String(d.getMonth() + 1).padStart(2, "0") + "/" + d.getFullYear();
+        }
+        // End of a durata-month period starting at dataIso: the day before the
+        // anniversary (mirrors calcola_data_fine on the server).
+        function finePeriodo(dataIso, durata) {
+            var f = aggiungiMesi(dataIso, durata);
+            f.setDate(f.getDate() - 1);
+            return f;
+        }
+
         function aggiorna() {
-            var inizioEl = document.getElementById("data_inizio");
-            var durataEl = document.getElementById("durata_mesi");
+            var inizio = document.getElementById("data_inizio").value;
+            var durata = parseInt(document.getElementById("durata_mesi").value, 10);
             var preview = document.getElementById("data-fine-preview");
-            var inizio = inizioEl.value;
-            var durata = parseInt(durataEl.value, 10);
-            if (!inizio || !durata || durata < 1) { preview.textContent = "—"; return; }
-            var fine = aggiungiMesi(inizio, durata);
-            fine.setDate(fine.getDate() - 1);
-            var gg = String(fine.getDate()).padStart(2, "0");
-            var mm = String(fine.getMonth() + 1).padStart(2, "0");
-            preview.textContent = gg + "/" + mm + "/" + fine.getFullYear();
+            if (!inizio || !durata || durata < 1) {
+                preview.textContent = "—";
+                aggiornaAnteprima();
+                return;
+            }
+            preview.textContent = itaDate(finePeriodo(inizio, durata));
+            aggiornaAnteprima();
+        }
+
+        // Mirrors occorrenze_nel_periodo: walk one contractual period at a
+        // time and, inside each, step by cadenza from THAT period's start.
+        function aggiornaAnteprima() {
+            var box = document.getElementById("anteprima-occorrenze");
+            if (!box) return;
+            var inizio = document.getElementById("data_inizio").value;
+            var durata = parseInt(document.getElementById("durata_mesi").value, 10);
+            var cadenza = parseInt(document.getElementById("cadenza_mesi").value, 10);
+            var rinnovoEl = document.getElementById("durata_rinnovo_mesi");
+            var rinnovo = parseInt(rinnovoEl && rinnovoEl.value, 10);
+            var auto = document.getElementById("rinnovo_automatico").checked;
+
+            if (!inizio || !durata || durata < 1 || !cadenza || cadenza < 1) {
+                box.innerHTML = '<span class="muted">Compila data inizio, durata e cadenza.</span>';
+                return;
+            }
+            var passoRinnovo = (rinnovo && rinnovo > 0) ? rinnovo : durata;
+
+            var MAX = 6;
+            var mostrate = [], nelPrimoPeriodo = 0, prossimoOltre = null;
+            var periodoInizio = inizio, periodoFine = finePeriodo(inizio, durata);
+            for (var p = 0; p < 12; p++) {
+                for (var n = 0; ; n++) {
+                    var d = aggiungiMesi(periodoInizio, n * cadenza);
+                    if (d > periodoFine) { prossimoOltre = d; break; }
+                    if (p === 0) nelPrimoPeriodo++;
+                    if (mostrate.length < MAX) mostrate.push({ d: d, periodo: p });
+                }
+                // Without auto-renewal the contract stops here: what follows is
+                // the single renewal proposal, not another period.
+                if (!auto || mostrate.length >= MAX) break;
+                var next = new Date(periodoFine); next.setDate(next.getDate() + 1);
+                periodoInizio = iso(next);
+                periodoFine = finePeriodo(periodoInizio, passoRinnovo);
+            }
+            // How many of the first period we had to leave out. Saying so
+            // matters: otherwise the renewal proposal would look like it comes
+            // straight after the last date shown.
+            var nelPrimoMostrate = mostrate.filter(function (v) { return v.periodo === 0; }).length;
+            var nascoste = nelPrimoPeriodo - nelPrimoMostrate;
+
+            var html = '<ul class="anteprima-lista">';
+            mostrate.forEach(function (v) {
+                html += '<li><span class="anteprima-data">' + itaDate(v.d) + '</span>' +
+                        (v.periodo === 0
+                            ? '<span class="anteprima-tag">periodo iniziale</span>'
+                            : '<span class="anteprima-tag anteprima-tag-rinnovo">rinnovo</span>') +
+                        '</li>';
+            });
+            if (!auto && nascoste > 0) {
+                html += '<li class="anteprima-altre">… e altre ' + nascoste +
+                        ' nel periodo iniziale</li>';
+            } else if (auto && mostrate.length >= MAX) {
+                html += '<li class="anteprima-altre">… e così via ad ogni rinnovo</li>';
+            }
+            if (!auto && prossimoOltre) {
+                html += '<li><span class="anteprima-data">' + itaDate(prossimoOltre) + '</span>' +
+                        '<span class="anteprima-tag anteprima-tag-proposta">proposta di rinnovo</span></li>';
+            }
+            html += "</ul>";
+
+            // Deliberately factual, not an alarm: billing a period in
+            // instalments is perfectly legitimate (a monthly-billed annual
+            // subscription), and only you know whether this contract is paid
+            // up front or in instalments. Stating the consequence is enough.
+            var nota = nelPrimoPeriodo > 1
+                ? '<p class="anteprima-nota"><strong>' + nelPrimoPeriodo +
+                  ' fatture dentro il periodo iniziale</strong> di ' + durata +
+                  ' mesi, una ogni ' + cadenza + (cadenza === 1 ? ' mese' : ' mesi') +
+                  '. Se invece il periodo si paga in un\'unica soluzione, metti la ' +
+                  'cadenza a ' + durata + ' e usa "Durata rinnovo" per il ritmo dei rinnovi.</p>'
+                : '<p class="anteprima-ok">1 fattura per periodo.</p>';
+            box.innerHTML = nota + html;
         }
 
         document.addEventListener("DOMContentLoaded", function () {
             aggiorna();
-            document.getElementById("durata_mesi").addEventListener("input", aggiorna);
-            document.getElementById("data_inizio").addEventListener("change", aggiorna);
-            document.getElementById("data_inizio").addEventListener("input", aggiorna);
+            ["durata_mesi", "data_inizio"].forEach(function (id) {
+                document.getElementById(id).addEventListener("input", aggiorna);
+                document.getElementById(id).addEventListener("change", aggiorna);
+            });
+            ["cadenza_mesi", "durata_rinnovo_mesi"].forEach(function (id) {
+                var el = document.getElementById(id);
+                if (el) el.addEventListener("input", aggiornaAnteprima);
+            });
+            document.getElementById("rinnovo_automatico")
+                    .addEventListener("change", aggiornaAnteprima);
         });
     })();
 </script>
