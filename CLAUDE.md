@@ -67,129 +67,62 @@ le scelte tecniche quando non sono banali.
 
 - **Cliente**: id, nome, note, attivo (bool).
 - **Servizio**: id, cliente_id (FK), descrizione, tipo
-  (licenza/contratto/abbonamento/altro), data_inizio, durata_mesi, data_fine,
-  rinnovo_automatico (bool), cadenza_mesi (int), importo (prezzo unitario di
-  default), quantita (default 1), valuta, preavviso_giorni, disdetto (bool),
+  (licenza/contratto/abbonamento/altro), **data_scadenza**, cadenza_mesi,
+  durata_impegno_mesi (opz.), rinnovo_automatico (bool), data_inizio (opz.,
+  informativa), importo, quantita, valuta, preavviso_giorni, disdetto (bool),
   referente, note.
+  - **Tutto si regge su `data_scadenza`**: è il giorno da cui parte il ciclo
+    di fatturazione corrente, e le occorrenze si generano avanzando di
+    `cadenza_mesi` da lì. Non c'è nessun'altra data che governi calcoli.
+  - **cadenza_mesi**: ogni quanti mesi si fattura (1 = mensile, 12 = annuale…).
+  - **durata_impegno_mesi** (opzionale): per quanti mesi il cliente è
+    impegnato. **Vuota = l'impegno è una singola fattura**, quindi ogni
+    occorrenza è già un rinnovo — è il caso normale (37 contratti su 38).
+    Si compila solo quando un impegno si fattura a rate: un abbonamento
+    annuale fatturato ogni mese ha `cadenza_mesi=1, durata_impegno_mesi=12`.
+  - **rinnovo_automatico**: il ciclo si ripete senza chiedere nulla, quindi le
+    occorrenze proseguono all'infinito. Senza, la generazione si ferma al primo
+    inizio-ciclo NON fatturato: quella è la **proposta di rinnovo**, la
+    decisione che spetta al cliente, e oltre non si sa nulla.
+  - **Fatturare la proposta È la conferma.** Non scrive niente sul contratto:
+    la generazione riparte da sola perché quella riga di stato ora dice
+    "fatturato". Smarcarla rimette il rinnovo in sospeso, senza contabilità da
+    disfare. `data_scadenza` non si muove mai: storico e righe di stato restano
+    agganciati.
+  - **data_inizio** è solo un promemoria di quando il servizio è partito e non
+    entra in nessun calcolo.
   - **Stato mostrato in UI** (Attivo/In scadenza/Scaduto/Disdetto): NON è una
-    colonna. È CALCOLATO da `stato_contratto(servizio, oggi)` in
-    app/services/occorrenze.py, con questa precedenza:
-    1. `disdetto=True` (unico flag manuale) → sempre "Disdetto", qualunque sia
-       la data.
-    2. altrimenti, confronta `data_fine_effettiva` con oggi (+ preavviso_giorni)
-       → "Scaduto" / "In scadenza" / "Attivo". Un contratto a rinnovo
-       automatico non risulta MAI "Scaduto" (la sua fine effettiva non è mai
-       nel passato).
-    Il vecchio Enum `StatoServizio` (attivo/scaduto/rinnovato/disdetto,
-    scelto a mano nel form) è stato rimosso: "rinnovato" non esiste più
-    (superato da durata_mesi/rinnovo_automatico), "attivo/in_scadenza/scaduto"
-    non sono più decisioni manuali. `disdetto` è l'unica decisione commerciale
-    che le date da sole non possono dedurre (il cliente ha annullato il
-    contratto), quindi resta un campo persistito.
-  - **disdetto=True sopprime gli alert delle occorrenze**: un'occorrenza di un
-    contratto disdetto NON risulta mai "Da fatturare"/"In scadenza" (vedi
-    `_stato_visivo` in occorrenze.py) — l'operatore non deve essere sollecitato
-    a fatturare qualcosa che il cliente ha annullato. Se l'occorrenza era già
-    stata fatturata prima della disdetta, resta "Fatturato" (la disdetta non
-    tocca lo storico di fatturazione).
-  - **durata_mesi**: per quanti mesi il contratto viene fatturato (durata),
-    concetto DISTINTO da `cadenza_mesi` (ogni quanto viene fatturato). Es. un
-    contratto annuale fatturato mensilmente ha cadenza_mesi=1, durata_mesi=12
-    (12 occorrenze).
-  - **data_fine** si CALCOLA da data_inizio + durata_mesi (vedi
-    `calcola_data_fine`: giorno prima dell'anniversario a durata_mesi di
-    distanza, così una durata di 12 mesi da gennaio copre gennaio–dicembre
-    inclusi) e NON si inserisce mai a mano nel form: il campo "Data fine" del
-    form storico è stato sostituito da "Durata contratto (mesi)". Resta una
-    colonna sul DB (serve al filtro SQL "quali contratti ricadono nel mese").
-  - **rinnovo_automatico**: significato COMMERCIALE: "fatturo senza chiedere
-    conferma al cliente". Se attivo, il contratto si rinnova da solo di un
-    altro blocco (durata_rinnovo_mesi se impostata, altrimenti durata_mesi)
-    ogni volta che altrimenti sarebbe scaduto. Il rinnovo NON scrive nulla
-    nel DB: la data di fine EFFETTIVA (che tiene conto del rinnovo) si
-    calcola al volo ad ogni lettura con
-    `data_fine_effettiva(servizio, riferimento)` in
-    app/services/occorrenze.py, sullo stesso principio delle occorrenze
-    stesse ("calcolato, non salvato" — niente scheduler di avanzamento). Le
-    query SQL che filtrano i servizi per mese (vedi
-    app/services/riepilogo.py) devono includere i servizi con
-    rinnovo_automatico=True indipendentemente dalla data_fine STORICA salvata,
-    altrimenti sparirebbero dalla dashboard una volta superata la prima
-    scadenza.
-  - **SENZA rinnovo_automatico — proposta di rinnovo e conferma tramite
-    fatturazione** (deciso con l'utente, vedi anche "Occorrenza" sotto): il
-    rinnovo va confermato dal cliente. Il sistema genera comunque UNA
-    occorrenza oltre la data_fine — la "proposta di rinnovo", che cade
-    sull'anniversario successivo (= data_fine + 1 giorno) — che compare in
-    dashboard/riepilogo e genera le notifiche man mano che si avvicina.
-    - Marcarla **fatturata** = il cliente ha confermato: il contratto si
-      ESTENDE di un blocco di rinnovo (durata_mesi += blocco, data_fine
-      ricalcolata; data_inizio NON si muove, così lo storico resta visibile).
-      Al primo rinnovo confermato durata_rinnovo_mesi viene valorizzata con
-      il blocco usato (altrimenti la conferma successiva userebbe come passo
-      il totale accumulato). Vedi `_estendi_se_rinnovo_confermato` in
-      app/routes/servizi.py; smarcarla ritira l'estensione
-      (`_ritira_estensione_se_smarcato`).
-    - Se il cliente non conferma: dopo la data_fine lo stato è "Scaduto",
-      la proposta resta "Da fatturare"; si risolve fatturando (estende) o
-      spuntando disdetto (sopprime avvisi e proposta).
-    - La proposta è UNA sola (nessuna proiezione oltre): dopo, non si sa
-      nulla finché il cliente non conferma.
-    - Il filtro SQL del mese ha un margine di 1 giorno su data_fine perché
-      la proposta (data_fine+1) può cadere nel mese successivo alla
-      data_fine salvata.
-    - Il backfill alla creazione ("occorrenze passate = fatturate per
-      definizione", vedi sotto) NON tocca la proposta: è proprio la
-      decisione pendente.
-  - **durata_rinnovo_mesi** (opzionale): lunghezza del blocco di rinnovo se
-    diversa dal periodo iniziale (es. 36 mesi iniziali, poi rinnovi annuali
-    di 12). Vuota = i rinnovi durano quanto durata_mesi.
-  - **cadenza_mesi**: ogni quanti mesi il servizio va fatturato (1 = mensile,
-    3 = trimestrale, 6 = semestrale, 12 = annuale, ecc.). Sostituisce il
-    vecchio Enum `ricorrenza`. NON esistono più servizi "una tantum": tutto è
-    ricorrente (per un pagamento singolo si imposta durata_mesi <= cadenza_mesi,
-    così solo la prima occorrenza ricade nel periodo del contratto).
-    La cadenza vale DENTRO ciascun periodo contrattuale, non è un passo fisso
-    da data_inizio (vedi Occorrenza): è questo che distingue i due casi che
-    con `durata_mesi=36, cadenza=12` sarebbero altrimenti indistinguibili.
-    - **Periodo pagato anticipatamente** (es. licenza triennale acquistata
-      subito, poi rinnovi annuali): `cadenza_mesi = durata_mesi` (36) e
-      `durata_rinnovo_mesi = 12`. Una sola fattura all'inizio, poi una per
-      ogni rinnovo. L'invito a fatturare NON deve mai comparire dentro i 36
-      mesi già pagati.
-    - **Periodo rateizzato** (contratto triennale fatturato una volta
-      all'anno): `cadenza_mesi = 12`, `durata_mesi = 36` → 3 fatture dentro
-      il periodo.
-  - **importo** è il prezzo unitario di default di OGNI occorrenza; il totale
-    di un'occorrenza è `quantita * importo` salvo override (vedi sotto). La
-    quantità serve per servizi a postazione/licenza (es. antivirus).
-  - **referente**: persona/collega a cui va fatturato il servizio, quando
-    diverso dal cliente finale. Campo testuale opzionale.
+    colonna, è calcolato da `stato_contratto` sulla `fine_copertura`:
+    1. `disdetto=True` → sempre "Disdetto".
+    2. altrimenti si guarda fin dove il cliente è coperto. Un contratto a
+       rinnovo automatico non è MAI "Scaduto": si rinnova che tu abbia
+       fatturato o no, quindi una fattura in ritardo appare come
+       "da fatturare", non come contratto scaduto.
+  - **disdetto=True sopprime gli alert delle occorrenze** e la proposta di
+    rinnovo: l'operatore non deve essere sollecitato a fatturare qualcosa che
+    il cliente ha annullato.
+  - **importo** è il prezzo unitario di OGNI occorrenza; il totale è
+    `quantita * importo` salvo override.
+  - **referente**: persona a cui va fatturato, quando diverso dal cliente.
+
+> NOTA STORICA: il modello derivava tutto da `data_inizio` + `durata_mesi` +
+> `cadenza_mesi` + `durata_rinnovo_mesi`. Quattro manopole, di cui due dicevano
+> la stessa cosa quando coincidevano e diventavano ambigue quando divergevano:
+> una licenza triennale pagata in anticipo e una fatturata annualmente si
+> inserivano allo stesso modo, e l'app sceglieva la seconda lettura,
+> programmando fatture dentro un periodo già pagato. Da qui il modello a data
+> unica.
 
 - **Occorrenza** (concetto CALCOLATO, NON una tabella): una singola scadenza
-  fatturabile. Le occorrenze si generano al volo percorrendo il contratto un
-  PERIODO alla volta — il periodo iniziale, poi ogni blocco di rinnovo — e
-  dentro ciascun periodo si ripetono ogni cadenza_mesi a partire dall'inizio
-  DI QUEL periodo, finché restano dentro il periodo stesso. I blocchi si
-  affiancano esattamente come `data_fine_effettiva` fa avanzare la fine (con
-  rinnovo_automatico può superare la data_fine storicizzata sul DB).
-  ECCEZIONE: un contratto SENZA rinnovo_automatico e non disdetto genera UNA
-  occorrenza in più oltre la data_fine, la "proposta di rinnovo" (vedi
-  rinnovo_automatico sopra), che cade sul passo di cadenza successivo alla
-  fine (non necessariamente data_fine+1: le righe storiche possono avere una
-  data_fine qualsiasi).
-  - L'ancoraggio al periodo, invece di un passo fisso da data_inizio, è ciò
-    che rende corretto un periodo pagato anticipatamente: un periodo più
-    corto della cadenza produce UNA occorrenza, all'inizio. Con un passo
-    fisso, un blocco di rinnovo più corto del periodo iniziale verrebbe
-    scavalcato e non fatturato mai (perdita di fatturato silenziosa).
-    Quando i rinnovi durano quanto il periodo iniziale — il caso comune, e
-    ogni contratto senza durata_rinnovo_mesi — le due cose coincidono.
-  - Ogni occorrenza cade nel **giorno del mese di data_inizio** (es. inizio il
-    15 → ogni occorrenza il giorno 15 del suo mese). Se un mese non ha quel
-    giorno (es. il 31 a febbraio), usare l'ultimo giorno valido del mese.
-  - Il totale di un'occorrenza usa l'importo/quantita del servizio, a meno che
-    esista un OverrideImporto per quella specifica data.
+  fatturabile. Si generano avanzando di `cadenza_mesi` da `data_scadenza`.
+  Le date che cadono su un confine di impegno aprono un nuovo ciclo; quelle in
+  mezzo sono le sue rate.
+  - Ogni occorrenza cade nel **giorno del mese di data_scadenza**; se un mese
+    non ha quel giorno (il 31 a febbraio) si usa l'ultimo giorno valido, e il
+    giorno si recupera appena un mese è di nuovo abbastanza lungo (niente
+    deriva).
+  - Il totale usa importo/quantita del servizio, salvo OverrideImporto per
+    quella data.
 
 - **OverrideImporto** (tabella di STATO per-occorrenza): id, servizio_id (FK),
   data_occorrenza, importo (nullable), quantita (nullable), fatturato (bool,

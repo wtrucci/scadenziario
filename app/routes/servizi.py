@@ -1,8 +1,8 @@
 """
 CRUD routes for services (servizi).
 
-A service is a recurring contract: it is valid from data_inizio to data_fine and
-billed every cadenza_mesi months. The actual billable dates ("occorrenze") are
+A service is a recurring contract hanging off data_scadenza, billed every
+cadenza_mesi months. The actual billable dates ("occorrenze") are
 computed elsewhere (app/services/occorrenze.py); these routes only manage the
 contract record.
 
@@ -32,9 +32,10 @@ from app.services.occorrenze import (
     STATI_CONTRATTO,
     Occorrenza,
     aggiungi_mesi,
-    calcola_data_fine,
-    data_fine_effettiva,
-    durata_mesi_congelata,
+    fine_copertura,
+    fine_impegno,
+    mesi_impegno,
+    scadenza_congelata,
     occorrenze_nel_periodo,
     stato_contratto,
 )
@@ -55,57 +56,8 @@ def _get_or_404(db: Session, servizio_id: int) -> Servizio:
     return s
 
 
-def _passo_rinnovo_manuale(servizio: Servizio) -> int:
-    """Renewal block length for a manually-confirmed renewal, in months:
-    ``durata_rinnovo_mesi`` if set, otherwise the contract's own duration.
-    Mirrors ``_passo_rinnovo`` in occorrenze.py (kept private there)."""
-    return servizio.durata_rinnovo_mesi or servizio.durata_mesi
-
-
-def _estendi_se_rinnovo_confermato(servizio: Servizio, data_occorrenza: date) -> None:
-    """Billing the "renewal proposal" occurrence of a contract WITHOUT
-    auto-renewal (the one occurrence past data_fine — see
-    occorrenze_nel_periodo) IS the client's confirmation: extend the contract
-    by one renewal block, so data_fine moves forward, the contract's state
-    goes back to attivo, and the NEXT renewal proposal starts alerting as it
-    approaches — the same progression rinnovo_automatico gives for free, but
-    only once actually confirmed by billing, never before.
-
-    data_inizio never moves, so the already-billed history keeps being
-    generated and stays visible. Occurrences within the contract period are
-    left alone: billing them is just bookkeeping, not a renewal decision.
-    """
-    if servizio.rinnovo_automatico or not servizio.durata_mesi:
-        return
-    if data_occorrenza <= servizio.data_fine:
-        return
-    passo = _passo_rinnovo_manuale(servizio)
-    # durata_mesi is about to accumulate: remember the block length explicitly,
-    # or the NEXT confirmation would use the accumulated total as its step.
-    servizio.durata_rinnovo_mesi = passo
-    servizio.durata_mesi += passo
-    servizio.data_fine = calcola_data_fine(servizio.data_inizio, servizio.durata_mesi)
-
-
-def _ritira_estensione_se_smarcato(servizio: Servizio, data_occorrenza: date) -> None:
-    """Undo of _estendi_se_rinnovo_confermato, for when the billing click was
-    a mistake: un-billing the occurrence that started the LAST confirmed
-    renewal block retracts that block, putting the contract (and its pending
-    renewal proposal) back exactly as before the click."""
-    if servizio.rinnovo_automatico or not servizio.durata_mesi:
-        return
-    passo = _passo_rinnovo_manuale(servizio)
-    if servizio.durata_mesi <= passo:
-        return  # nothing left to retract: this is the initial term
-    if data_occorrenza != aggiungi_mesi(servizio.data_inizio, servizio.durata_mesi - passo):
-        return
-    servizio.durata_mesi -= passo
-    servizio.data_fine = calcola_data_fine(servizio.data_inizio, servizio.durata_mesi)
-
-
 def _imposta_fatturato(
     db: Session, servizio: Servizio, data_occorrenza: date, occ: Occorrenza, fatturato: bool,
-    *, avanza_se_confermato: bool = True,
 ) -> None:
     """Get-or-create the per-occurrence state row and set its fatturato flag.
 
@@ -115,12 +67,10 @@ def _imposta_fatturato(
     clears that snapshot ONLY if it was not a deliberate manual override.
     Shared by the single-occurrence toggle and the per-customer bulk action.
 
-    Billing the renewal-proposal occurrence of a non-auto-renewing contract
-    also extends the contract by one renewal block (and un-billing it
-    retracts the block) — see _estendi_se_rinnovo_confermato.
-    ``avanza_se_confermato=False`` is used only by _fattura_occorrenze_passate
-    (a historical backfill at creation time, not a live confirmation from the
-    client) so it never moves the contract's dates.
+    Nothing on the contract is written: billing an unbilled cycle opening IS
+    the customer's confirmation, and the engine resumes generating from the
+    next cycle on its own (see occorrenze_nel_periodo). Un-billing puts the
+    pending renewal straight back — no bookkeeping to unwind.
     """
     stato = db.scalars(
         select(OverrideImporto)
@@ -136,15 +86,11 @@ def _imposta_fatturato(
         stato.importo = occ.importo
         stato.quantita = occ.quantita
         stato.fatturato_il = utcnow()
-        if avanza_se_confermato:
-            _estendi_se_rinnovo_confermato(servizio, data_occorrenza)
     else:
         stato.fatturato_il = None
         if not stato.override_manuale:
             stato.importo = None
             stato.quantita = None
-        if avanza_se_confermato:
-            _ritira_estensione_se_smarcato(servizio, data_occorrenza)
 
 
 def _fattura_occorrenze_passate(db: Session, servizio: Servizio, oggi: date) -> None:
@@ -173,14 +119,13 @@ def _fattura_occorrenze_passate(db: Session, servizio: Servizio, oggi: date) -> 
     # a non-auto-renewing contract) is exempt even when it is already in the
     # past: it is precisely the pending decision the user must act on, not
     # history to be silenced.
-    fine_effettiva = data_fine_effettiva(servizio, riferimento=oggi)
-    for occ in occorrenze_nel_periodo(servizio, servizio.data_inizio, oggi, oggi=oggi):
-        if occ.data_occorrenza > fine_effettiva:
-            continue
+    if not servizio.rinnovo_automatico:
+        # Its only occurrence is the renewal still waiting on the customer —
+        # precisely the decision to act on, not history to silence.
+        return
+    for occ in occorrenze_nel_periodo(servizio, servizio.data_scadenza, oggi, oggi=oggi):
         if occ.data_occorrenza <= oggi and occ.data_occorrenza not in esistenti:
-            _imposta_fatturato(
-                db, servizio, occ.data_occorrenza, occ, fatturato=True, avanza_se_confermato=False
-            )
+            _imposta_fatturato(db, servizio, occ.data_occorrenza, occ, fatturato=True)
 
 
 def _clienti_attivi(db: Session) -> list[Cliente]:
@@ -202,9 +147,9 @@ def _valori_da_servizio(s: Servizio) -> dict:
         "cliente_id": str(s.cliente_id),
         "descrizione": s.descrizione,
         "tipo": s.tipo.value,
-        "data_inizio": s.data_inizio.isoformat(),
-        "durata_mesi": str(s.durata_mesi) if s.durata_mesi is not None else "",
-        "durata_rinnovo_mesi": str(s.durata_rinnovo_mesi) if s.durata_rinnovo_mesi is not None else "",
+        "data_scadenza": s.data_scadenza.isoformat(),
+        "data_inizio": s.data_inizio.isoformat() if s.data_inizio else "",
+        "durata_impegno_mesi": str(s.durata_impegno_mesi) if s.durata_impegno_mesi is not None else "",
         "rinnovo_automatico": s.rinnovo_automatico,
         "cadenza_mesi": str(s.cadenza_mesi),
         "importo": str(s.importo),
@@ -229,9 +174,9 @@ def _valida(
     cliente_id_raw: str,
     descrizione: str,
     tipo_raw: str,
+    data_scadenza_raw: str,
     data_inizio_raw: str,
-    durata_mesi_raw: str,
-    durata_rinnovo_mesi_raw: str,
+    durata_impegno_mesi_raw: str,
     cadenza_mesi_raw: str,
     importo_raw: str,
     quantita_raw: str,
@@ -273,42 +218,36 @@ def _valida(
     except ValueError:
         errori.append("Seleziona un tipo valido.")
 
-    # data_inizio
-    data_inizio = None
+    # data_scadenza — the one date everything is computed from.
     try:
-        data_inizio = date.fromisoformat(data_inizio_raw)
-        parsed["data_inizio"] = data_inizio
+        parsed["data_scadenza"] = date.fromisoformat(data_scadenza_raw)
     except (ValueError, TypeError):
-        errori.append("Inserisci una data di inizio valida.")
+        errori.append("Inserisci una data di scadenza valida.")
 
-    # durata_mesi — data_fine is derived from it (data_inizio + durata_mesi),
-    # never entered directly (see Servizio docstring).
-    try:
-        durata_mesi = int(durata_mesi_raw)
-        if durata_mesi < 1:
-            errori.append("La durata del contratto deve essere di almeno 1 mese.")
-        else:
-            parsed["durata_mesi"] = durata_mesi
-            if data_inizio is not None:
-                parsed["data_fine"] = calcola_data_fine(data_inizio, durata_mesi)
-    except (ValueError, TypeError):
-        errori.append("Durata contratto non valida: inserisci un numero intero di mesi (es. 12).")
-
-    # durata_rinnovo_mesi — optional: empty means "same as durata_mesi" (see
-    # _passo_rinnovo in occorrenze.py). Only meaningful with rinnovo_automatico,
-    # but validated regardless so a stray value is never silently accepted.
-    durata_rinnovo_raw = durata_rinnovo_mesi_raw.strip()
-    if not durata_rinnovo_raw:
-        parsed["durata_rinnovo_mesi"] = None
+    # data_inizio — optional and purely informational (see Servizio docstring).
+    inizio_raw = data_inizio_raw.strip()
+    if not inizio_raw:
+        parsed["data_inizio"] = None
     else:
         try:
-            durata_rinnovo = int(durata_rinnovo_raw)
-            if durata_rinnovo < 1:
-                errori.append("La durata del rinnovo deve essere di almeno 1 mese.")
-            else:
-                parsed["durata_rinnovo_mesi"] = durata_rinnovo
+            parsed["data_inizio"] = date.fromisoformat(inizio_raw)
         except (ValueError, TypeError):
-            errori.append("Durata rinnovo non valida: inserisci un numero intero di mesi (es. 12).")
+            errori.append("Data di inizio non valida.")
+
+    # durata_impegno_mesi — optional: empty means the commitment is a single
+    # billing, so every occurrence is a renewal (see mesi_impegno).
+    impegno_raw = durata_impegno_mesi_raw.strip()
+    if not impegno_raw:
+        parsed["durata_impegno_mesi"] = None
+    else:
+        try:
+            impegno = int(impegno_raw)
+            if impegno < 1:
+                errori.append("La durata dell'impegno deve essere di almeno 1 mese.")
+            else:
+                parsed["durata_impegno_mesi"] = impegno
+        except (ValueError, TypeError):
+            errori.append("Durata impegno non valida: inserisci un numero intero di mesi (es. 12).")
 
     # cadenza_mesi
     try:
@@ -399,7 +338,7 @@ def lista_servizi(
     # rolled-forward period instead of the originally stored one), and the
     # computed contract state.
     righe = [
-        (s, etichetta_cadenza(s.cadenza_mesi), data_fine_effettiva(s, riferimento=oggi),
+        (s, etichetta_cadenza(s.cadenza_mesi), fine_copertura(s, oggi),
          stato_contratto(s, oggi=oggi))
         for s in servizi
     ]
@@ -449,8 +388,9 @@ def nuovo_form(
                 "cliente_id": "",
                 "descrizione": "",
                 "tipo": TipoServizio.abbonamento.value,
+                "data_scadenza": "",
                 "data_inizio": "",
-                "durata_mesi": "12",
+                "durata_impegno_mesi": "",
                 "rinnovo_automatico": False,
                 "cadenza_mesi": "12",
                 "importo": "",
@@ -474,8 +414,8 @@ def crea_servizio(
     descrizione: str = Form(""),
     tipo: str = Form(""),
     data_inizio: str = Form(""),
-    durata_mesi: str = Form(""),
-    durata_rinnovo_mesi: str = Form(""),
+    data_scadenza: str = Form(""),
+    durata_impegno_mesi: str = Form(""),
     rinnovo_automatico: str | None = Form(None),  # checkbox: present when checked
     cadenza_mesi: str = Form(""),
     importo: str = Form(""),
@@ -494,8 +434,8 @@ def crea_servizio(
     is_disdetto = disdetto is not None
     valori = _valori_da_form(
         cliente_id=cliente_id, descrizione=descrizione, tipo=tipo,
-        data_inizio=data_inizio, durata_mesi=durata_mesi,
-        durata_rinnovo_mesi=durata_rinnovo_mesi, cadenza_mesi=cadenza_mesi,
+        data_scadenza=data_scadenza, data_inizio=data_inizio,
+        durata_impegno_mesi=durata_impegno_mesi, cadenza_mesi=cadenza_mesi,
         importo=importo, quantita=quantita, valuta=valuta,
         preavviso_giorni=preavviso_giorni,
         referente=referente, numero_seriale=numero_seriale,
@@ -505,8 +445,8 @@ def crea_servizio(
     valori["disdetto"] = is_disdetto
     errori, parsed = _valida(
         cliente_id_raw=cliente_id, descrizione=descrizione, tipo_raw=tipo,
-        data_inizio_raw=data_inizio, durata_mesi_raw=durata_mesi,
-        durata_rinnovo_mesi_raw=durata_rinnovo_mesi, cadenza_mesi_raw=cadenza_mesi,
+        data_scadenza_raw=data_scadenza, data_inizio_raw=data_inizio,
+        durata_impegno_mesi_raw=durata_impegno_mesi, cadenza_mesi_raw=cadenza_mesi,
         importo_raw=importo, quantita_raw=quantita, valuta=valuta,
         preavviso_giorni_raw=preavviso_giorni, db=db,
     )
@@ -570,8 +510,8 @@ def aggiorna_servizio(
     descrizione: str = Form(""),
     tipo: str = Form(""),
     data_inizio: str = Form(""),
-    durata_mesi: str = Form(""),
-    durata_rinnovo_mesi: str = Form(""),
+    data_scadenza: str = Form(""),
+    durata_impegno_mesi: str = Form(""),
     rinnovo_automatico: str | None = Form(None),  # checkbox: present when checked
     cadenza_mesi: str = Form(""),
     importo: str = Form(""),
@@ -590,18 +530,17 @@ def aggiorna_servizio(
     is_rinnovo = rinnovo_automatico is not None
     is_disdetto = disdetto is not None
 
-    # Turning auto-renewal off must freeze the CONTRACT'S CURRENT effective
-    # end date, not silently reset it to the original term's end — computed
-    # from the service as it stood BEFORE today's edits (durata_mesi_congelata
-    # replays the same renewal steps data_fine_effettiva would, so it lands on
-    # the same date). Overrides whatever was typed in "Durata contratto" below.
+    # Turning auto-renewal off must pin the cycle where the automatic renewals
+    # have actually carried it, not snap it back to the stored one — computed
+    # from the service as it stood BEFORE today's edits. Overrides whatever was
+    # typed in "Data di scadenza" below.
     disattiva_rinnovo = s.rinnovo_automatico and not is_rinnovo
-    durata_congelata = durata_mesi_congelata(s, date.today()) if disattiva_rinnovo else None
+    scadenza_pinnata = scadenza_congelata(s, date.today()) if disattiva_rinnovo else None
 
     valori = _valori_da_form(
         cliente_id=cliente_id, descrizione=descrizione, tipo=tipo,
-        data_inizio=data_inizio, durata_mesi=durata_mesi,
-        durata_rinnovo_mesi=durata_rinnovo_mesi, cadenza_mesi=cadenza_mesi,
+        data_scadenza=data_scadenza, data_inizio=data_inizio,
+        durata_impegno_mesi=durata_impegno_mesi, cadenza_mesi=cadenza_mesi,
         importo=importo, quantita=quantita, valuta=valuta,
         preavviso_giorni=preavviso_giorni,
         referente=referente, numero_seriale=numero_seriale,
@@ -611,8 +550,8 @@ def aggiorna_servizio(
     valori["disdetto"] = is_disdetto
     errori, parsed = _valida(
         cliente_id_raw=cliente_id, descrizione=descrizione, tipo_raw=tipo,
-        data_inizio_raw=data_inizio, durata_mesi_raw=durata_mesi,
-        durata_rinnovo_mesi_raw=durata_rinnovo_mesi, cadenza_mesi_raw=cadenza_mesi,
+        data_scadenza_raw=data_scadenza, data_inizio_raw=data_inizio,
+        durata_impegno_mesi_raw=durata_impegno_mesi, cadenza_mesi_raw=cadenza_mesi,
         importo_raw=importo, quantita_raw=quantita, valuta=valuta,
         preavviso_giorni_raw=preavviso_giorni, db=db,
     )
@@ -629,9 +568,8 @@ def aggiorna_servizio(
              **choices},
             status_code=422,
         )
-    if durata_congelata is not None:
-        parsed["durata_mesi"] = durata_congelata
-        parsed["data_fine"] = calcola_data_fine(parsed["data_inizio"], durata_congelata)
+    if scadenza_pinnata is not None:
+        parsed["data_scadenza"] = scadenza_pinnata
     for field, value in parsed.items():
         setattr(s, field, value)
     s.referente = referente.strip() or None

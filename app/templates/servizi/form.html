@@ -84,23 +84,23 @@
         </select>
     </div>
 
-    {# --- Periodo del contratto: inizio / durata. La data di fine NON si
-         inserisce a mano: si calcola da data inizio + durata (vedi
-         calcola_data_fine in app/services/occorrenze.py) e viene mostrata
-         qui sotto solo come anteprima. #}
+    {# --- La data di scadenza e' l'unico ancoraggio: tutto il resto si calcola
+         da lei (vedi il docstring di Servizio). "Data inizio" e' solo una nota
+         di quando il servizio e' partito e non entra in nessun calcolo. #}
     <div class="field-row-2">
         <div class="field">
-            <label for="data_inizio">Data inizio <span class="required">*</span></label>
-            <input type="text" class="date-picker" id="data_inizio" name="data_inizio"
-                   value="{{ valori.data_inizio }}" required>
+            <label for="data_scadenza">Data di scadenza <span class="required">*</span></label>
+            <input type="text" class="date-picker" id="data_scadenza" name="data_scadenza"
+                   value="{{ valori.data_scadenza }}" required>
+            <small class="muted">
+                Da qui parte il ciclo corrente: ad ogni rinnovo avanza da sola.
+            </small>
         </div>
         <div class="field">
-            <label for="durata_mesi">Durata contratto (mesi) <span class="required">*</span></label>
-            <input type="number" id="durata_mesi" name="durata_mesi"
-                   value="{{ valori.durata_mesi }}" min="1" step="1" required>
-            <small class="muted">
-                Data fine: <strong id="data-fine-preview">—</strong>
-            </small>
+            <label for="data_inizio">Data inizio (facoltativa)</label>
+            <input type="text" class="date-picker" id="data_inizio" name="data_inizio"
+                   value="{{ valori.data_inizio }}">
+            <small class="muted">Solo promemoria di quando il servizio e' partito.</small>
         </div>
     </div>
 
@@ -110,19 +110,19 @@
         <label for="rinnovo_automatico">Rinnovo automatico alla scadenza</label>
     </div>
     <div class="field">
-        <label for="durata_rinnovo_mesi">Durata rinnovo (mesi)</label>
-        <input type="number" id="durata_rinnovo_mesi" name="durata_rinnovo_mesi"
-               value="{{ valori.durata_rinnovo_mesi }}" min="1" step="1">
+        <label for="durata_impegno_mesi">Durata impegno (mesi)</label>
+        <input type="number" id="durata_impegno_mesi" name="durata_impegno_mesi"
+               value="{{ valori.durata_impegno_mesi }}" min="1" step="1">
         <small class="muted">
-            Solo se il rinnovo automatico ha una durata diversa dal contratto iniziale
-            (es. 36 mesi iniziali, poi rinnovi annuali di 12). Lascia vuoto per usare
-            la stessa durata del contratto.
+            Lascia vuoto se ogni scadenza e' gia' un rinnovo: e' il caso normale.
+            Compilalo solo quando un impegno si fattura a rate — es. un abbonamento
+            annuale fatturato ogni mese: cadenza 1, impegno 12.
         </small>
     </div>
     {% if servizio is defined and servizio.rinnovo_automatico %}
     <p class="muted">
         Se togli la spunta "Rinnovo automatico" e salvi, la scadenza resta quella
-        raggiunta ad oggi con i rinnovi già maturati (non torna al primo periodo).
+        raggiunta ad oggi con i rinnovi già maturati (non torna indietro).
     </p>
     {% endif %}
 
@@ -154,15 +154,14 @@
     </div>
 
     {# Live preview of the occurrences these dates produce. It exists because
-       cadenza/durata alone don't make it obvious how many invoices you are
-       creating: entering a 36-month licence paid up front as cadenza=12
-       silently schedules three invoices inside a period the client already
-       paid. Seeing the dates makes that visible while you type. The JS below
-       mirrors occorrenze_nel_periodo (period-anchored). #}
+       cadenza and impegno together decide how many invoices a commitment
+       produces, and getting that wrong is silent: it only surfaces months
+       later on the dashboard. Seeing the dates makes it visible while you
+       type. The JS below mirrors occorrenze_nel_periodo. #}
     <div class="field">
         <span class="anteprima-titolo">Fatture che verranno generate</span>
         <div id="anteprima-occorrenze" class="anteprima-occorrenze">
-            <span class="muted">Compila data inizio, durata e cadenza.</span>
+            <span class="muted">Compila data di scadenza e cadenza.</span>
         </div>
     </div>
 
@@ -197,9 +196,6 @@
 </form>
 
 <script>
-    // Live preview only — the server always recomputes and owns the real
-    // data_fine (see calcola_data_fine in app/services/occorrenze.py). Mirrors
-    // the same month-add-with-day-clamp rule purely for user feedback.
     (function () {
         function aggiungiMesi(dataIso, mesi) {
             var p = dataIso.split("-").map(Number);
@@ -209,121 +205,81 @@
             var ultimoGiorno = new Date(nuovoAnno, nuovoMese, 0).getDate();
             return new Date(nuovoAnno, nuovoMese - 1, Math.min(p[2], ultimoGiorno));
         }
-
-        function iso(d) {
-            return d.getFullYear() + "-" +
-                   String(d.getMonth() + 1).padStart(2, "0") + "-" +
-                   String(d.getDate()).padStart(2, "0");
-        }
         function itaDate(d) {
             return String(d.getDate()).padStart(2, "0") + "/" +
                    String(d.getMonth() + 1).padStart(2, "0") + "/" + d.getFullYear();
         }
-        // End of a durata-month period starting at dataIso: the day before the
-        // anniversary (mirrors calcola_data_fine on the server).
-        function finePeriodo(dataIso, durata) {
-            var f = aggiungiMesi(dataIso, durata);
-            f.setDate(f.getDate() - 1);
-            return f;
-        }
 
-        function aggiorna() {
-            var inizio = document.getElementById("data_inizio").value;
-            var durata = parseInt(document.getElementById("durata_mesi").value, 10);
-            var preview = document.getElementById("data-fine-preview");
-            if (!inizio || !durata || durata < 1) {
-                preview.textContent = "—";
-                aggiornaAnteprima();
-                return;
-            }
-            preview.textContent = itaDate(finePeriodo(inizio, durata));
-            aggiornaAnteprima();
-        }
-
-        // Mirrors occorrenze_nel_periodo: walk one contractual period at a
-        // time and, inside each, step by cadenza from THAT period's start.
+        // Mirrors occorrenze_nel_periodo: step cadenza months from the cycle
+        // start, stopping one past the commitment unless it renews by itself.
         function aggiornaAnteprima() {
             var box = document.getElementById("anteprima-occorrenze");
             if (!box) return;
-            var inizio = document.getElementById("data_inizio").value;
-            var durata = parseInt(document.getElementById("durata_mesi").value, 10);
+            var scadenza = document.getElementById("data_scadenza").value;
             var cadenza = parseInt(document.getElementById("cadenza_mesi").value, 10);
-            var rinnovoEl = document.getElementById("durata_rinnovo_mesi");
-            var rinnovo = parseInt(rinnovoEl && rinnovoEl.value, 10);
+            var impegnoEl = document.getElementById("durata_impegno_mesi");
+            var impegnoVal = parseInt(impegnoEl && impegnoEl.value, 10);
             var auto = document.getElementById("rinnovo_automatico").checked;
 
-            if (!inizio || !durata || durata < 1 || !cadenza || cadenza < 1) {
-                box.innerHTML = '<span class="muted">Compila data inizio, durata e cadenza.</span>';
+            if (!scadenza || !cadenza || cadenza < 1) {
+                box.innerHTML = '<span class="muted">Compila data di scadenza e cadenza.</span>';
                 return;
             }
-            var passoRinnovo = (rinnovo && rinnovo > 0) ? rinnovo : durata;
+            var impegno = (impegnoVal && impegnoVal > 0) ? impegnoVal : cadenza;
+            var fineImpegno = aggiungiMesi(scadenza, impegno);
+            fineImpegno.setDate(fineImpegno.getDate() - 1);
 
             var MAX = 6;
-            var mostrate = [], nelPrimoPeriodo = 0, prossimoOltre = null;
-            var periodoInizio = inizio, periodoFine = finePeriodo(inizio, durata);
-            for (var p = 0; p < 12; p++) {
-                for (var n = 0; ; n++) {
-                    var d = aggiungiMesi(periodoInizio, n * cadenza);
-                    if (d > periodoFine) { prossimoOltre = d; break; }
-                    if (p === 0) nelPrimoPeriodo++;
-                    if (mostrate.length < MAX) mostrate.push({ d: d, periodo: p });
-                }
-                // Without auto-renewal the contract stops here: what follows is
-                // the single renewal proposal, not another period.
-                if (!auto || mostrate.length >= MAX) break;
-                var next = new Date(periodoFine); next.setDate(next.getDate() + 1);
-                periodoInizio = iso(next);
-                periodoFine = finePeriodo(periodoInizio, passoRinnovo);
+            var mostrate = [], nelImpegno = 0, proposta = null, passo = 0;
+            while (true) {
+                var d = aggiungiMesi(scadenza, passo * cadenza);
+                var dentro = d <= fineImpegno;
+                if (!auto && !dentro) { proposta = d; break; }
+                if (dentro) nelImpegno++;
+                if (mostrate.length >= MAX) break;
+                mostrate.push({ d: d, dentro: dentro });
+                passo++;
             }
-            // How many of the first period we had to leave out. Saying so
-            // matters: otherwise the renewal proposal would look like it comes
-            // straight after the last date shown.
-            var nelPrimoMostrate = mostrate.filter(function (v) { return v.periodo === 0; }).length;
-            var nascoste = nelPrimoPeriodo - nelPrimoMostrate;
+            var nascoste = nelImpegno - mostrate.filter(function (v) { return v.dentro; }).length;
 
             var html = '<ul class="anteprima-lista">';
             mostrate.forEach(function (v) {
                 html += '<li><span class="anteprima-data">' + itaDate(v.d) + '</span>' +
-                        (v.periodo === 0
-                            ? '<span class="anteprima-tag">periodo iniziale</span>'
+                        (v.dentro
+                            ? '<span class="anteprima-tag">impegno corrente</span>'
                             : '<span class="anteprima-tag anteprima-tag-rinnovo">rinnovo</span>') +
                         '</li>';
             });
-            if (!auto && nascoste > 0) {
-                html += '<li class="anteprima-altre">… e altre ' + nascoste +
-                        ' nel periodo iniziale</li>';
+            if (nascoste > 0) {
+                html += '<li class="anteprima-altre">\u2026 e altre ' + nascoste +
+                        ' nell\'impegno corrente</li>';
             } else if (auto && mostrate.length >= MAX) {
-                html += '<li class="anteprima-altre">… e così via ad ogni rinnovo</li>';
+                html += '<li class="anteprima-altre">\u2026 e cos\u00ec via ad ogni rinnovo</li>';
             }
-            if (!auto && prossimoOltre) {
-                html += '<li><span class="anteprima-data">' + itaDate(prossimoOltre) + '</span>' +
+            if (proposta) {
+                html += '<li><span class="anteprima-data">' + itaDate(proposta) + '</span>' +
                         '<span class="anteprima-tag anteprima-tag-proposta">proposta di rinnovo</span></li>';
             }
             html += "</ul>";
 
-            // Deliberately factual, not an alarm: billing a period in
-            // instalments is perfectly legitimate (a monthly-billed annual
-            // subscription), and only you know whether this contract is paid
-            // up front or in instalments. Stating the consequence is enough.
-            var nota = nelPrimoPeriodo > 1
-                ? '<p class="anteprima-nota"><strong>' + nelPrimoPeriodo +
-                  ' fatture dentro il periodo iniziale</strong> di ' + durata +
-                  ' mesi, una ogni ' + cadenza + (cadenza === 1 ? ' mese' : ' mesi') +
-                  '. Se invece il periodo si paga in un\'unica soluzione, metti la ' +
-                  'cadenza a ' + durata + ' e usa "Durata rinnovo" per il ritmo dei rinnovi.</p>'
-                : '<p class="anteprima-ok">1 fattura per periodo.</p>';
+            // Factual, not an alarm: billing a commitment in instalments is
+            // legitimate, and only the operator knows which case this is.
+            var nota = nelImpegno > 1
+                ? '<p class="anteprima-nota"><strong>' + nelImpegno +
+                  ' fatture per un impegno di ' + impegno + ' mesi</strong>, una ogni ' +
+                  cadenza + (cadenza === 1 ? " mese" : " mesi") +
+                  '. Se invece si paga in un\'unica soluzione, lascia vuota la durata impegno.</p>'
+                : '<p class="anteprima-ok">1 fattura per ogni scadenza.</p>';
             box.innerHTML = nota + html;
         }
 
         document.addEventListener("DOMContentLoaded", function () {
-            aggiorna();
-            ["durata_mesi", "data_inizio"].forEach(function (id) {
-                document.getElementById(id).addEventListener("input", aggiorna);
-                document.getElementById(id).addEventListener("change", aggiorna);
-            });
-            ["cadenza_mesi", "durata_rinnovo_mesi"].forEach(function (id) {
+            aggiornaAnteprima();
+            ["data_scadenza", "cadenza_mesi", "durata_impegno_mesi"].forEach(function (id) {
                 var el = document.getElementById(id);
-                if (el) el.addEventListener("input", aggiornaAnteprima);
+                if (!el) return;
+                el.addEventListener("input", aggiornaAnteprima);
+                el.addEventListener("change", aggiornaAnteprima);
             });
             document.getElementById("rinnovo_automatico")
                     .addEventListener("change", aggiornaAnteprima);

@@ -46,7 +46,7 @@ def _make_engine():
 
 def _add_servizio(
     db, cliente, descrizione, data_inizio, importo, *,
-    data_fine=None, cadenza_mesi=1, quantita=1,
+    cadenza_mesi=1, quantita=1, rinnovo_automatico=True,
     disdetto=False, referente=None,
 ):
     """Add a service. By default it is a single payment (data_fine == data_inizio)
@@ -55,8 +55,8 @@ def _add_servizio(
         cliente=cliente,
         descrizione=descrizione,
         tipo=TipoServizio.abbonamento,
-        data_inizio=data_inizio,
-        data_fine=data_fine or data_inizio,
+        data_scadenza=data_inizio,
+        rinnovo_automatico=rinnovo_automatico,
         cadenza_mesi=cadenza_mesi,
         importo=Decimal(importo),
         quantita=quantita,
@@ -109,8 +109,7 @@ class TestLogicaRiepilogo(unittest.TestCase):
     def test_occorrenza_mensile_compare_ogni_mese(self):
         """A monthly contract spanning several months yields one occurrence in
         the selected month (proving occurrences are computed, not one-shot)."""
-        _add_servizio(self.db, self.acme, "Mensile", date(2026, 1, 10), "10",
-                      data_fine=date(2027, 1, 10), cadenza_mesi=1)
+        _add_servizio(self.db, self.acme, "Mensile", date(2026, 1, 10), "10", cadenza_mesi=1)
         self.db.flush()
 
         righe = riepilogo.occorrenze_del_mese(self.db, DICEMBRE)

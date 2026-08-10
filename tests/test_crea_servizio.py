@@ -74,14 +74,14 @@ class TestCreaServizio(unittest.TestCase):
 
     # --- helpers ---------------------------------------------------------
 
-    def _crea(self, *, data_inizio: date, durata_mesi=12, cadenza_mesi=12,
+    def _crea(self, *, data_scadenza: date, durata_impegno_mesi="", cadenza_mesi=12,
                rinnovo_automatico=False):
         payload = {
             "cliente_id": str(self.cliente_id),
             "descrizione": "Licenza test",
             "tipo": "licenza",
-            "data_inizio": data_inizio.isoformat(),
-            "durata_mesi": str(durata_mesi),
+            "data_scadenza": data_scadenza.isoformat(),
+            "durata_impegno_mesi": str(durata_impegno_mesi),
             "cadenza_mesi": str(cadenza_mesi),
             "importo": "10.00",
             "quantita": "1",
@@ -110,19 +110,21 @@ class TestCreaServizio(unittest.TestCase):
     # --- tests -------------------------------------------------------------
 
     def test_occorrenza_passata_viene_fatturata_automaticamente(self):
-        servizio_id = self._crea(data_inizio=OGGI - timedelta(days=400))
+        # 400 days back at a yearly cadence: the cycle opening and its first
+        # anniversary are both in the past, so both get settled.
+        servizio_id = self._crea(data_scadenza=OGGI - timedelta(days=400), rinnovo_automatico=True)
         stati = self._stati(servizio_id)
-        self.assertEqual(len(stati), 1)
-        self.assertTrue(stati[0].fatturato)
+        self.assertEqual(len(stati), 2)
+        self.assertTrue(all(st.fatturato for st in stati))
 
     def test_occorrenza_futura_non_viene_toccata(self):
-        servizio_id = self._crea(data_inizio=OGGI + timedelta(days=10))
+        servizio_id = self._crea(data_scadenza=OGGI + timedelta(days=10))
         stati = self._stati(servizio_id)
         self.assertEqual(stati, [])
 
     def test_occorrenza_di_oggi_viene_fatturata(self):
         # "oggi" counts as already past for this rule (<=), not upcoming.
-        servizio_id = self._crea(data_inizio=OGGI)
+        servizio_id = self._crea(data_scadenza=OGGI, rinnovo_automatico=True)
         stati = self._stati(servizio_id)
         self.assertEqual(len(stati), 1)
         self.assertTrue(stati[0].fatturato)
@@ -132,7 +134,7 @@ class TestCreaServizio(unittest.TestCase):
         # occurrences accumulate, but only the ones up to today should be
         # auto-billed — future ones must remain open for real alerts/notifications.
         servizio_id = self._crea(
-            data_inizio=OGGI - timedelta(days=4 * 365), durata_mesi=1, cadenza_mesi=1,
+            data_scadenza=OGGI - timedelta(days=4 * 365), cadenza_mesi=1,
             rinnovo_automatico=True,
         )
         stati = self._stati(servizio_id)
@@ -149,7 +151,7 @@ class TestCreaServizio(unittest.TestCase):
         data_inizio = OGGI - timedelta(days=5)
         s = Servizio(
             cliente=cliente, descrizione="Preesistente", tipo=TipoServizio.licenza,
-            data_inizio=data_inizio, data_fine=data_inizio, durata_mesi=1, cadenza_mesi=1,
+            data_scadenza=data_inizio, cadenza_mesi=1, rinnovo_automatico=True,
             importo=10, quantita=1, valuta="EUR", preavviso_giorni=30,
         )
         db.add(s)

@@ -14,28 +14,35 @@ class Servizio(Base):
     """
     A recurring billable service (a contract).
 
-    A service is valid from ``data_inizio`` to ``data_fine`` (inclusive) and is
-    billed every ``cadenza_mesi`` months. The individual billable dates
-    ("occorrenze") are NOT stored: they are computed on the fly from
-    data_inizio + cadenza_mesi steps until the EFFECTIVE end date (see
-    ``data_fine_effettiva`` in app/services/occorrenze.py). A single payment is
-    modelled as durata_mesi <= cadenza_mesi (so only the first occurrence ever
-    falls within the contract period).
+    Everything about time hangs off ONE date: ``data_scadenza``, the day the
+    current billing cycle starts. For the overwhelmingly common contract —
+    one invoice per cycle — that date IS the renewal date, and confirming a
+    renewal simply moves it forward. The individual billable dates
+    ("occorrenze") are NOT stored: they are computed on the fly by stepping
+    ``cadenza_mesi`` months from ``data_scadenza`` (see
+    app/services/occorrenze.py).
+
+    ``durata_impegno_mesi`` is what the customer is committed to. Leave it
+    empty and the commitment is exactly one billing, so every occurrence is a
+    renewal (37 of 38 real contracts). Set it when a commitment is billed in
+    instalments — a yearly subscription invoiced monthly has cadenza_mesi=1
+    and durata_impegno_mesi=12: the twelve instalments are certain, and only
+    what follows needs the customer's go-ahead.
+
+    ``rinnovo_automatico`` means the cycle repeats without asking: occurrences
+    keep being generated indefinitely. Without it, generation stops one
+    occurrence past the commitment — the "renewal proposal" — because nothing
+    beyond it is known until the customer confirms.
+
+    A previous model derived all of this from ``data_inizio`` plus a duration
+    and a cadence. It could express the same contract in two ways that meant
+    different things, and mis-entering one silently scheduled invoices inside
+    a period the customer had already paid for. ``data_inizio`` survives only
+    as a note of when the relationship began; nothing computes from it.
 
     The per-occurrence total defaults to ``quantita * importo`` (see the
     ``totale`` property), unless an OverrideImporto exists for that specific
     occurrence date.
-
-    ``cadenza_mesi`` (how often it's billed) is independent from
-    ``durata_mesi`` (how long the contract runs): e.g. a monthly-billed
-    12-month contract has cadenza_mesi=1, durata_mesi=12, and produces 12
-    occurrences. ``data_fine`` is derived from data_inizio + durata_mesi (see
-    ``calcola_data_fine``) and stored, so it stays a plain indexable column for
-    the SQL "which contracts overlap this month" filter; it is NOT meant to be
-    edited directly. If ``rinnovo_automatico`` is set, the contract rolls
-    forward by another durata_mesi block whenever it would otherwise have
-    expired — computed on the fly (see ``data_fine_effettiva``), nothing here
-    is updated by a background job.
     """
     __tablename__ = "servizi"
 
@@ -47,31 +54,28 @@ class Servizio(Base):
         Enum(TipoServizio, native_enum=False, length=20)
     )
 
-    # Contract period: the service is valid from data_inizio to data_fine
-    # (inclusive). Each occurrence falls on the day-of-month of data_inizio.
-    # data_fine is derived from data_inizio + durata_mesi, not entered directly
-    # (see the class docstring).
-    data_inizio: Mapped[date] = mapped_column(Date)
-    data_fine: Mapped[date] = mapped_column(Date)
+    # The single date everything is computed from: start of the current billing
+    # cycle, and the day-of-month every occurrence falls on. Indexed because the
+    # "which contracts fall in this month" query filters on it.
+    data_scadenza: Mapped[date] = mapped_column(Date, index=True)
 
-    # Contract duration in months, used to compute data_fine and, together with
-    # rinnovo_automatico, to roll it forward on renewal. Nullable only for rows
-    # that predate this field; new/edited services always set it.
-    durata_mesi: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # Purely informational: when the service started, for reference in the UI.
+    # Deliberately drives NO calculation (see the class docstring).
+    data_inizio: Mapped[date | None] = mapped_column(Date, nullable=True)
 
-    # If True, the contract auto-renews for another block each time it expires
-    # (see the class docstring and data_fine_effettiva). Each renewal block is
-    # durata_rinnovo_mesi long if set, otherwise durata_mesi (the common case:
-    # renewals are the same length as the initial term). This lets an initial
-    # term differ from its renewals — e.g. a 36-month first term followed by
-    # 12-month yearly renewals.
+    # If True the cycle repeats without needing confirmation, so occurrences are
+    # generated indefinitely. If False, generation stops one occurrence past the
+    # commitment: that occurrence is the renewal proposal, and billing it is the
+    # customer's confirmation (it moves data_scadenza forward).
     rinnovo_automatico: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
-    durata_rinnovo_mesi: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
-    # Billing cadence in months (1 = monthly, 3 = quarterly, 6 = half-yearly,
-    # 12 = yearly, ...). Replaces the old `ricorrenza` enum; there is no longer
-    # a "one-off" recurrence (use data_fine == data_inizio for a single payment).
+    # Billing cadence in months (1 = monthly, 3 = quarterly, 12 = yearly, ...).
     cadenza_mesi: Mapped[int] = mapped_column(Integer)
+
+    # How many months the customer is committed to. NULL = one billing per
+    # commitment (every occurrence is a renewal), which is the common case.
+    # Set it only when a commitment is billed in instalments.
+    durata_impegno_mesi: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
     # Default unit price of each occurrence. Occurrence total = quantita * importo
     # (see the `totale` property), unless overridden per date via OverrideImporto.
@@ -126,5 +130,5 @@ class Servizio(Base):
     def __repr__(self) -> str:
         return (
             f"<Servizio id={self.id} descrizione={self.descrizione!r}"
-            f" {self.data_inizio}..{self.data_fine} ogni {self.cadenza_mesi}m>"
+            f" scadenza={self.data_scadenza} ogni {self.cadenza_mesi}m>"
         )

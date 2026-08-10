@@ -21,7 +21,7 @@ from dataclasses import dataclass, field
 from datetime import date, timedelta
 from decimal import Decimal
 
-from sqlalchemy import or_, select
+from sqlalchemy import select
 from sqlalchemy.orm import Session, joinedload, selectinload
 
 from app.models.cliente import Cliente
@@ -51,8 +51,9 @@ def occorrenze_del_mese(
 ) -> list[RigaOccorrenza]:
     """All occurrences falling within the month starting at ``primo``.
 
-    Services are pre-filtered to those whose contract ``[data_inizio, data_fine]``
-    overlaps the month; the occurrence engine then produces the exact dates.
+    Services are pre-filtered in SQL to those that could possibly have an
+    occurrence in the month; the occurrence engine then produces the exact
+    dates.
     When ``escludi_disdetti`` is True, cancelled contracts (Servizio.disdetto)
     are left out entirely (used by the billing summary — a cancelled contract
     is never to be invoiced, however far its date range still runs). Note this
@@ -68,23 +69,14 @@ def occorrenze_del_mese(
     inizio = primo
     fine = ultimo_giorno_mese(primo)
 
-    # Contract overlaps the month if it starts on/before the month end AND ends
-    # on/after the month start. An auto-renewing contract has no fixed end (its
-    # EFFECTIVE end rolls forward — see data_fine_effettiva), so the stored
-    # data_fine alone would wrongly drop it from later months: match it on
-    # rinnovo_automatico regardless of the stored data_fine instead.
-    # The one-day margin on data_fine keeps the "renewal proposal" occurrence
-    # visible (see occorrenze_nel_periodo): it falls on data_fine + 1 day,
-    # which can land in the month AFTER the stored end date (e.g. a contract
-    # ending on the last day of a month proposes its renewal on the 1st of
-    # the next one).
+    # Occurrences only ever run FORWARD from data_scadenza, so a contract whose
+    # cycle starts after the month ends can be ruled out in SQL. Anything else
+    # has to reach the engine: an auto-renewing contract repeats indefinitely,
+    # and one awaiting confirmation still owes its renewal proposal, so neither
+    # has an end date this query could filter on.
     query = (
         select(Servizio)
-        .where(Servizio.data_inizio <= fine)
-        .where(or_(
-            Servizio.data_fine >= inizio - timedelta(days=1),
-            Servizio.rinnovo_automatico.is_(True),
-        ))
+        .where(Servizio.data_scadenza <= fine)
         # Eager-load to avoid N+1 queries when expanding occurrences/grouping.
         .options(
             joinedload(Servizio.cliente),

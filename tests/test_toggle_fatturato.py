@@ -60,7 +60,7 @@ class TestToggleFatturato(unittest.TestCase):
         db.flush()
         s = Servizio(
             cliente=cliente, descrizione="Servizio", tipo=TipoServizio.abbonamento,
-            data_inizio=GEN, data_fine=date(2026, 3, 10), cadenza_mesi=1,
+            data_scadenza=GEN, cadenza_mesi=1, rinnovo_automatico=True,
             importo=Decimal("100.00"), quantita=1, valuta="EUR",
             preavviso_giorni=30,
         )

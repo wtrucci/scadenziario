@@ -48,15 +48,15 @@ def _make_engine():
     return engine
 
 
-def _add_servizio(db, cliente, descrizione, data_inizio, importo, *,
-                  data_fine=None, disdetto=False, referente=None):
+def _add_servizio(db, cliente, descrizione, data_scadenza, importo, *,
+                  cadenza_mesi=1, rinnovo_automatico=True, disdetto=False, referente=None):
     s = Servizio(
         cliente=cliente,
         descrizione=descrizione,
         tipo=TipoServizio.abbonamento,
-        data_inizio=data_inizio,
-        data_fine=data_fine if data_fine is not None else data_inizio,
-        cadenza_mesi=1,
+        data_scadenza=data_scadenza,
+        rinnovo_automatico=rinnovo_automatico,
+        cadenza_mesi=cadenza_mesi,
         importo=Decimal(importo),
         quantita=1,
         valuta="EUR",
@@ -271,15 +271,13 @@ class TestFiltriRotteServizi(unittest.TestCase):
         beta = Cliente(nome="Beta", attivo=True)
         db.add_all([acme, beta])
         db.flush()
-        # data_fine far in the future so these read as "attivo" regardless of
-        # the actual date the test suite runs on.
-        FUTURO = date(2099, 12, 31)
-        _add_servizio(db, acme, "AcmeAttivo", date(2026, 1, 5), "10",
-                      data_fine=FUTURO, referente="Mario")
-        _add_servizio(db, acme, "AcmeDisdetto", date(2026, 1, 6), "10",
-                      data_fine=FUTURO, disdetto=True)
-        _add_servizio(db, beta, "BetaAttivo", date(2026, 1, 7), "10",
-                      data_fine=FUTURO)
+        # Yearly contracts whose next billing is far away, so they read
+        # "attivo" regardless of the day the tests run on. (A MONTHLY contract
+        # would always read "in scadenza": its next invoice is days away.)
+        futuro = date.today().replace(year=date.today().year + 2)
+        _add_servizio(db, acme, "AcmeAttivo", futuro, "10", cadenza_mesi=12, referente="Mario")
+        _add_servizio(db, acme, "AcmeDisdetto", futuro, "10", cadenza_mesi=12, disdetto=True)
+        _add_servizio(db, beta, "BetaAttivo", futuro, "10", cadenza_mesi=12)
         db.commit()
         self.acme_id = acme.id
         db.close()

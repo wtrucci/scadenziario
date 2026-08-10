@@ -1,14 +1,24 @@
 """
 Occurrence-calculation engine — the core of the application.
 
-A Servizio is a recurring contract valid from ``data_inizio`` to ``data_fine``
-(inclusive), billed every ``cadenza_mesi`` months. The individual billable
-dates ("occorrenze") are NOT stored: they are computed on the fly here.
+A Servizio hangs off ONE date, ``data_scadenza``: the day its current billing
+cycle starts. Occurrences are NOT stored — they are computed here by stepping
+``cadenza_mesi`` months from that date.
+
+``durata_impegno_mesi`` says how long the customer is committed for. Left
+empty, the commitment is a single billing, so every occurrence is itself a
+renewal. Set, the commitment is billed in instalments and only what follows it
+needs confirming.
+
+With ``rinnovo_automatico`` the cycle repeats on its own and occurrences run
+indefinitely. Without it, generation stops one occurrence past the commitment:
+that occurrence is the renewal proposal, and past it nothing is known until the
+customer confirms.
 
 Key rule — the "target day" must not drift. Each occurrence is computed
-independently from the month/year of ``data_inizio`` (never by stepping from the
-previous occurrence), then the day is clamped to the last valid day of the
-target month. So a contract starting on the 31st gives Jan 31 -> Feb 28/29 ->
+independently from the month/year of ``data_scadenza`` (never by stepping from
+the previous occurrence), then the day is clamped to the last valid day of the
+target month. So a cycle starting on the 31st gives Jan 31 -> Feb 28/29 ->
 Mar 31 (back to 31, no drift) -> Apr 30 -> ...
 
 All monetary values stay Decimal, never float.
@@ -82,26 +92,21 @@ def stato_contratto(servizio: Servizio, oggi: date | None = None) -> str:
     """The contract's own display state — distinct from a single occurrence's
     stato_visivo. By precedence:
 
-    1. ``disdetto`` (manual flag)                    -> "disdetto" (always wins)
-    2. effective end date already passed             -> "scaduto"
-       (an auto-renewing contract's effective end date never falls behind
-       ``oggi`` — see data_fine_effettiva — so it can never be "scaduto")
-    3. effective end date within preavviso_giorni     -> "in_scadenza"
-    4. otherwise                                      -> "attivo"
+    1. ``disdetto`` (manual flag)      -> "disdetto" (always wins)
+    2. cover already ended             -> "scaduto"
+    3. cover ends within preavviso_giorni -> "in_scadenza"
+    4. otherwise                       -> "attivo"
 
-    What matters is ALWAYS the contract's end date (per explicit product
-    decision): "scaduto" simply means data_fine passed without the renewal
-    being confirmed. The pending renewal itself is surfaced as an occurrence
-    (the "renewal proposal", see occorrenze_nel_periodo), not through this
-    state. Billing that proposal extends the contract (see routes/servizi.py),
-    which brings the state back to attivo — so an expired-and-then-confirmed
-    contract heals on its own.
+    See ``fine_copertura`` for what "cover" means. An auto-renewing contract
+    can never read "scaduto": it renews whether or not you got round to
+    invoicing, so an unbilled occurrence of one shows up as "da fatturare",
+    not as an expired contract.
     """
     if servizio.disdetto:
         return "disdetto"
     if oggi is None:
         oggi = date.today()
-    fine = data_fine_effettiva(servizio, riferimento=oggi)
+    fine = fine_copertura(servizio, oggi)
     if fine < oggi:
         return "scaduto"
     if fine <= oggi + timedelta(days=servizio.preavviso_giorni):
@@ -138,59 +143,63 @@ def calcola_data_fine(data_inizio: date, durata_mesi: int) -> date:
     return aggiungi_mesi(data_inizio, durata_mesi) - timedelta(days=1)
 
 
-def _passo_rinnovo(servizio: Servizio) -> int:
-    """Length in months of each renewal block: ``durata_rinnovo_mesi`` if set
-    (an initial term that differs from its renewals, e.g. 36 months up front
-    then 12-month yearly renewals), otherwise the same as the initial
-    ``durata_mesi``."""
-    return servizio.durata_rinnovo_mesi or servizio.durata_mesi
+def mesi_impegno(servizio: Servizio) -> int:
+    """How many months the customer is committed to per cycle.
 
-
-def data_fine_effettiva(servizio: Servizio, riferimento: date) -> date:
-    """The contract's effective end date, accounting for automatic renewal.
-
-    Without auto-renewal (``rinnovo_automatico=False``, the default), this is
-    simply ``servizio.data_fine``. With auto-renewal, the contract rolls
-    forward one renewal block at a time (see ``_passo_rinnovo``) whenever it
-    would otherwise already have expired, so it always covers at least up to
-    ``riferimento``. Nothing is persisted: like occurrences themselves, the
-    renewed end date is computed on the fly from data_fine + the renewal
-    step, so no background job is needed to "advance" it.
+    Empty ``durata_impegno_mesi`` means the commitment is a single billing, so
+    it equals the cadence: every occurrence is itself a renewal. That is the
+    common case — set the field only when a commitment is billed in
+    instalments (a yearly subscription invoiced monthly: cadenza 1, impegno 12).
     """
-    fine = servizio.data_fine
-    if not servizio.rinnovo_automatico or not servizio.durata_mesi:
+    return servizio.durata_impegno_mesi or servizio.cadenza_mesi
+
+
+def fine_impegno(servizio: Servizio) -> date:
+    """Last day of the commitment that starts at ``data_scadenza``."""
+    return calcola_data_fine(servizio.data_scadenza, mesi_impegno(servizio))
+
+
+def scadenza_congelata(servizio: Servizio, oggi: date) -> date:
+    """Where an auto-renewing contract's cycle has actually reached today.
+
+    Auto-renewal rolls the cycle forward without writing anything down, so
+    turning it off has to pin the cycle where it has got to; otherwise the
+    contract would snap back to a cycle years in the past and immediately
+    propose a renewal that is already history.
+    """
+    impegno = mesi_impegno(servizio)
+    scadenza = servizio.data_scadenza
+    while calcola_data_fine(scadenza, impegno) < oggi:
+        scadenza = calcola_data_fine(scadenza, impegno) + timedelta(days=1)
+    return scadenza
+
+
+def fine_copertura(servizio: Servizio, oggi: date) -> date:
+    """Last day the customer is actually covered — what the contract badge reads.
+
+    An auto-renewing contract rolls forward on its own, so its cover always
+    reaches at least ``oggi``: it can never show as expired just because an
+    invoice is late.
+
+    Otherwise the cycle starting at ``data_scadenza`` only covers the customer
+    once it has been paid for. Until that first occurrence is billed the
+    contract is still living on the previous cycle, which ended the day before
+    — which is exactly what makes a pending renewal read "in scadenza" and
+    then "scaduto" if it is never confirmed.
+    """
+    impegno = mesi_impegno(servizio)
+    if servizio.rinnovo_automatico:
+        fine = calcola_data_fine(servizio.data_scadenza, impegno)
+        while fine < oggi:
+            fine = calcola_data_fine(fine + timedelta(days=1), impegno)
         return fine
-    passo = _passo_rinnovo(servizio)
-    while fine < riferimento:
-        fine = calcola_data_fine(fine + timedelta(days=1), passo)
-    return fine
-
-
-def durata_mesi_congelata(servizio: Servizio, riferimento: date) -> int:
-    """The single ``durata_mesi`` value that reproduces the contract's
-    CURRENT effective end date (as of ``riferimento``) with auto-renewal
-    turned off.
-
-    Used when the user disables ``rinnovo_automatico`` on an auto-renewing
-    contract: without this, saving the form would recompute data_fine from
-    the ORIGINAL durata_mesi alone, snapping the contract back to its first
-    term and discarding every renewal already elapsed. Month-arithmetic
-    composes additively (aggiungi_mesi never drifts — see the module
-    docstring), so accumulating the same steps data_fine_effettiva would
-    take, instead of it, gives back an equivalent single duration: replaying
-    calcola_data_fine(data_inizio, durata_mesi_congelata(...)) reproduces the
-    exact effective end date, whether or not renewal blocks were a different
-    length than the initial term (see _passo_rinnovo).
-    """
-    durata_totale = servizio.durata_mesi
-    fine = servizio.data_fine
-    if not servizio.rinnovo_automatico or not fine:
-        return durata_totale
-    passo = _passo_rinnovo(servizio)
-    while fine < riferimento:
-        fine = calcola_data_fine(fine + timedelta(days=1), passo)
-        durata_totale += passo
-    return durata_totale
+    ciclo_pagato = any(
+        ov.data_occorrenza == servizio.data_scadenza and ov.fatturato
+        for ov in servizio.override_importi
+    )
+    if not ciclo_pagato:
+        return servizio.data_scadenza - timedelta(days=1)
+    return calcola_data_fine(servizio.data_scadenza, impegno)
 
 
 def occorrenze_nel_periodo(
@@ -198,30 +207,18 @@ def occorrenze_nel_periodo(
 ) -> list[Occorrenza]:
     """Return the service's occurrences falling within ``[data_da, data_a]``.
 
-    The contract is walked one PERIOD at a time — the initial term, then each
-    renewal block — and within each period occurrences repeat every
-    ``cadenza_mesi`` months from that period's start, while they stay inside
-    it. Each date falls on the day-of-month of ``data_inizio``, clamped to the
-    last valid day of the target month (see module docstring). Dates outside
-    the requested interval are filtered out.
+    Occurrences step ``cadenza_mesi`` months from ``data_scadenza``, each date
+    falling on that date's day-of-month clamped to the target month's last
+    valid day (see module docstring). Dates outside the requested interval are
+    filtered out.
 
-    Anchoring to the period (rather than stepping from ``data_inizio``
-    forever) is what makes a term paid up front behave correctly: a period
-    shorter than the cadence yields ONE occurrence, at its start, so a
-    36-month licence with yearly renewals is invoiced on day one and then
-    once per renewal — not every year of the term it already paid for. When
-    renewals last as long as the initial term the two are equivalent.
-
-    ``data_fine`` here means the EFFECTIVE end date (see ``data_fine_effettiva``):
-    for an auto-renewing contract this rolls forward as needed to cover
-    ``data_a``, so occurrences keep being generated past the originally stored
-    end date without any stored value ever changing.
-
-    A contract WITHOUT auto-renewal additionally yields ONE occurrence past
-    its end date — the "renewal proposal" at the next anniversary (which is
-    always data_fine + 1 day, since data_fine is the day before an
-    anniversary): the renewal to be confirmed by the client. See the inline
-    comment in the loop below. Cancelled contracts (disdetto) don't propose.
+    How far they run depends on the commitment. With ``rinnovo_automatico``
+    the cycle repeats on its own, so they run to ``data_a``. Without it, they
+    stop one occurrence past ``fine_impegno``: that last one is the renewal
+    PROPOSAL — the renewal the customer still has to confirm. Billing it is
+    that confirmation (see routes/servizi.py), which moves data_scadenza
+    forward. Nothing beyond it is generated, because nothing beyond it is
+    known. A cancelled contract (disdetto) proposes nothing.
 
     For each date a per-occurrence STATE row (OverrideImporto) may exist:
     ``importo``/``quantita`` are used only when not NULL (otherwise the service
@@ -237,19 +234,8 @@ def occorrenze_nel_periodo(
         oggi = date.today()
 
     # Map occurrence date -> state row, so we can apply per-date corrections.
-    stato_per_data = {
-        ov.data_occorrenza: ov for ov in servizio.override_importi
-    }
-
-    inizio = servizio.data_inizio
-    giorno_target = inizio.day
+    stato_per_data = {ov.data_occorrenza: ov for ov in servizio.override_importi}
     occorrenze: list[Occorrenza] = []
-    fine_effettiva = data_fine_effettiva(servizio, riferimento=data_a)
-
-    # Degenerate contract (end before start): no occurrences at all — without
-    # this guard the renewal-proposal rule below would still emit one.
-    if fine_effettiva < inizio:
-        return occorrenze
 
     def aggiungi(data_occ: date) -> None:
         """Materialise one occurrence, applying its state row if any."""
@@ -278,70 +264,28 @@ def occorrenze_nel_periodo(
             ),
         ))
 
-    # Walk the contract one PERIOD at a time — the initial term, then each
-    # renewal block — instead of stepping from data_inizio forever.
-    #
-    # This matters when a renewal block is shorter than the initial term
-    # (durata_rinnovo_mesi, e.g. 36 months paid up front then yearly
-    # renewals): billing restarts with every block, so anchoring the cadence
-    # to data_inizio would step straight over whole renewal blocks and never
-    # bill them. The blocks are tiled exactly the way data_fine_effettiva
-    # rolls the end date forward, so periods and effective end always agree.
-    #
-    # Anchoring to the period also gives the up-front case its correct
-    # meaning: a period shorter than the cadence bills ONCE, at its start
-    # (a 3-year licence is invoiced on day one, not once a year).
-    #
-    # When renewals last as long as the initial term (the common case, and
-    # every contract without durata_rinnovo_mesi) the blocks line up with the
-    # old fixed stepping, so this produces exactly the same dates as before.
-    passo_rinnovo = _passo_rinnovo(servizio)
-    periodo_inizio = inizio
-    periodo_fine = servizio.data_fine
-
+    # Walk forward from the cycle start. Each occurrence that lands on a cycle
+    # boundary opens a new commitment; the ones in between are its instalments.
+    impegno = mesi_impegno(servizio)
+    passo = 0
     while True:
-        passo = 0
-        while True:
-            anno, mese = _avanza_mesi(
-                periodo_inizio.year, periodo_inizio.month, passo * servizio.cadenza_mesi
-            )
-            # Clamp the target day to this month's last valid day (handles
-            # 31 -> 30, and Feb 28/29). The reference day stays giorno_target
-            # every step, so it is recovered whenever the month is long enough
-            # again.
-            ultimo_giorno = calendar.monthrange(anno, mese)[1]
-            data_occ = date(anno, mese, min(giorno_target, ultimo_giorno))
-            if data_occ > periodo_fine:
-                # Where this period's cadence would have gone next. On the
-                # LAST period that is the renewal proposal's date (below):
-                # it follows the cadence rather than being data_fine + 1,
-                # because data_fine need not sit the day before an
-                # anniversary (older rows may hold any end date).
-                prima_oltre = data_occ
-                break
-            aggiungi(data_occ)
-            passo += 1
-
-        # fine_effettiva already covers data_a for an auto-renewing contract,
-        # so the last tiled block is the last one worth generating. Without a
-        # renewal step (legacy rows with no durata_mesi) there are no blocks.
-        if periodo_fine >= fine_effettiva or not passo_rinnovo:
+        scarto = passo * servizio.cadenza_mesi
+        data_occ = aggiungi_mesi(servizio.data_scadenza, scarto)
+        if data_occ > data_a:
             break
-        periodo_inizio = periodo_fine + timedelta(days=1)
-        periodo_fine = calcola_data_fine(periodo_inizio, passo_rinnovo)
-
-    # A contract WITHOUT auto-renewal also yields ONE occurrence past its end
-    # date — the "renewal proposal", on the next anniversary (always
-    # data_fine + 1 day, since data_fine is the day before one): renewing
-    # there needs the client's go-ahead (that is what not ticking
-    # rinnovo_automatico means), so the system must surface that date in the
-    # dashboard/riepilogo and notify as it approaches, instead of silently
-    # ending the contract. Billing it = the client confirmed, and extends the
-    # contract by one renewal block (see routes/servizi.py). It is a single
-    # extra occurrence, never a projection further into the future: past it,
-    # nothing is known until the client confirms. Cancelled contracts
-    # (disdetto) propose nothing.
-    if not servizio.rinnovo_automatico and not servizio.disdetto:
-        aggiungi(prima_oltre)
+        apre_un_ciclo = scarto % impegno == 0
+        if not servizio.rinnovo_automatico and apre_un_ciclo:
+            stato = stato_per_data.get(data_occ)
+            if stato is None or not stato.fatturato:
+                # An unbilled cycle opening is the renewal still waiting on the
+                # customer, and the last thing we know: what comes after depends
+                # on an answer we do not have. Billing it IS the answer, and
+                # generation resumes from the next cycle on its own. A cancelled
+                # contract is not even asked.
+                if not servizio.disdetto:
+                    aggiungi(data_occ)
+                break
+        aggiungi(data_occ)
+        passo += 1
 
     return occorrenze

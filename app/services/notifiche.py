@@ -13,7 +13,7 @@ a failed attempt is not "already notified" and is retried on the next run):
 3. ``contratto_scaduto``    — the CONTRACT itself (not a single occurrence)
    has reached ``stato_contratto == "scaduto"``. This never fires for a
    ``rinnovo_automatico`` contract: its effective end date is never in the
-   past (see ``data_fine_effettiva``), so it can never be "scaduto" — that
+   past (see ``fine_copertura``), so it can never be "scaduto" — that
    invariant is enough to skip the notification, no extra check needed here.
 
 Adding a new channel later means: write a ``invia_<canale>`` function here,
@@ -34,7 +34,7 @@ from app.config import settings
 from app.models.enums import CanalNotifica, TipoNotifica
 from app.models.notifica_log import NotificaLog
 from app.models.servizio import Servizio
-from app.services.occorrenze import Occorrenza, data_fine_effettiva, occorrenze_nel_periodo, stato_contratto
+from app.services.occorrenze import Occorrenza, fine_copertura, occorrenze_nel_periodo, stato_contratto
 
 logger = logging.getLogger("scadenziario.notifiche")
 
@@ -112,7 +112,7 @@ def occorrenze_da_notificare(db: Session, oggi: date | None = None) -> list[Cand
         # 3) Contract expired. Auto-renewing contracts are excluded for free:
         # stato_contratto never returns "scaduto" for them.
         if stato_contratto(servizio, oggi=oggi) == "scaduto":
-            scadenza = data_fine_effettiva(servizio, riferimento=oggi)
+            scadenza = fine_copertura(servizio, oggi)
             chiave = (scadenza, TipoNotifica.contratto_scaduto)
             if chiave not in gia_notificate:
                 candidati.append(CandidatoNotifica(

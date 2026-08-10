@@ -58,7 +58,8 @@ class TestNotifiche(unittest.TestCase):
     def _servizio(self, **kwargs) -> Servizio:
         base = dict(
             cliente=self.cliente, descrizione="Assistenza", tipo=TipoServizio.contratto,
-            cadenza_mesi=1, importo=Decimal("50.00"), quantita=1, valuta="EUR",
+            cadenza_mesi=1, rinnovo_automatico=True,
+            importo=Decimal("50.00"), quantita=1, valuta="EUR",
             preavviso_giorni=30,
         )
         base.update(kwargs)
@@ -70,21 +71,21 @@ class TestNotifiche(unittest.TestCase):
     # --- preavviso personalizzato -----------------------------------------
 
     def test_occorrenza_in_scadenza_e_candidata(self):
-        self._servizio(data_inizio=OGGI + timedelta(days=5), data_fine=date(2027, 1, 1))
+        self._servizio(data_scadenza=OGGI + timedelta(days=5))
         candidati = notifiche.occorrenze_da_notificare(self.db, oggi=OGGI)
         tipi = {c.tipo for c in candidati}
         self.assertIn(TipoNotifica.preavviso, tipi)
 
     def test_servizio_disdetto_escluso(self):
         s = self._servizio(
-            data_inizio=OGGI + timedelta(days=5), data_fine=date(2027, 1, 1), disdetto=True
+            data_scadenza=OGGI + timedelta(days=5), disdetto=True
         )
         candidati = notifiche.occorrenze_da_notificare(self.db, oggi=OGGI)
         self.assertEqual(candidati, [])
 
     def test_occorrenza_fuori_finestra_di_preavviso_non_e_candidata(self):
         self._servizio(
-            data_inizio=OGGI + timedelta(days=90), data_fine=date(2027, 6, 1), preavviso_giorni=5
+            data_scadenza=OGGI + timedelta(days=90), preavviso_giorni=5
         )
         candidati = notifiche.occorrenze_da_notificare(self.db, oggi=OGGI)
         self.assertEqual(candidati, [])
@@ -92,9 +93,9 @@ class TestNotifiche(unittest.TestCase):
     def test_occorrenza_gia_fatturata_non_e_candidata(self):
         from app.models.override_importo import OverrideImporto
 
-        s = self._servizio(data_inizio=OGGI + timedelta(days=5), data_fine=date(2027, 1, 1))
+        s = self._servizio(data_scadenza=OGGI + timedelta(days=5))
         self.db.add(OverrideImporto(
-            servizio_id=s.id, data_occorrenza=s.data_inizio, fatturato=True, fatturato_il=OGGI,
+            servizio_id=s.id, data_occorrenza=s.data_scadenza, fatturato=True, fatturato_il=OGGI,
         ))
         self.db.commit()
         candidati = notifiche.occorrenze_da_notificare(self.db, oggi=OGGI)
@@ -106,7 +107,7 @@ class TestNotifiche(unittest.TestCase):
         # preavviso_giorni=3 would NOT trigger "preavviso" for an occurrence
         # due in 6 days, but the fixed 7-day reminder must still fire.
         self._servizio(
-            data_inizio=OGGI + timedelta(days=6), data_fine=date(2027, 1, 1), preavviso_giorni=3
+            data_scadenza=OGGI + timedelta(days=6), preavviso_giorni=3
         )
         candidati = notifiche.occorrenze_da_notificare(self.db, oggi=OGGI)
         tipi = {c.tipo for c in candidati}
@@ -115,7 +116,7 @@ class TestNotifiche(unittest.TestCase):
 
     def test_promemoria_7_giorni_fuori_finestra_non_e_candidato(self):
         self._servizio(
-            data_inizio=OGGI + timedelta(days=8), data_fine=date(2027, 1, 1), preavviso_giorni=3
+            data_scadenza=OGGI + timedelta(days=8), preavviso_giorni=3
         )
         candidati = notifiche.occorrenze_da_notificare(self.db, oggi=OGGI)
         self.assertEqual(candidati, [])
@@ -124,8 +125,7 @@ class TestNotifiche(unittest.TestCase):
 
     def test_contratto_scaduto_e_candidato(self):
         self._servizio(
-            data_inizio=date(2025, 1, 1), data_fine=OGGI - timedelta(days=1),
-            rinnovo_automatico=False,
+            data_scadenza=OGGI - timedelta(days=1), rinnovo_automatico=False,
         )
         candidati = notifiche.occorrenze_da_notificare(self.db, oggi=OGGI)
         tipi = [c for c in candidati if c.tipo is TipoNotifica.contratto_scaduto]
@@ -133,8 +133,7 @@ class TestNotifiche(unittest.TestCase):
 
     def test_contratto_scaduto_con_rinnovo_automatico_non_notifica(self):
         self._servizio(
-            data_inizio=date(2025, 1, 1), data_fine=date(2025, 12, 31),
-            durata_mesi=12, rinnovo_automatico=True,
+            data_scadenza=OGGI - timedelta(days=1), rinnovo_automatico=True,
         )
         candidati = notifiche.occorrenze_da_notificare(self.db, oggi=OGGI)
         tipi = [c for c in candidati if c.tipo is TipoNotifica.contratto_scaduto]
@@ -143,7 +142,7 @@ class TestNotifiche(unittest.TestCase):
     # --- invio e dedup ---------------------------------------------------
 
     def test_invio_riuscito_non_viene_ripetuto(self):
-        self._servizio(data_inizio=OGGI + timedelta(days=5), data_fine=date(2027, 1, 1))
+        self._servizio(data_scadenza=OGGI + timedelta(days=5))
         with patch.object(notifiche, "invia_telegram", return_value=(True, None)):
             inviate = notifiche.invia_notifiche_scadenza(self.db)
         self.assertGreater(inviate, 0)
@@ -155,7 +154,7 @@ class TestNotifiche(unittest.TestCase):
         mock_invio.assert_not_called()
 
     def test_invio_fallito_viene_ritentato(self):
-        self._servizio(data_inizio=OGGI + timedelta(days=5), data_fine=date(2027, 1, 1))
+        self._servizio(data_scadenza=OGGI + timedelta(days=5))
         with patch.object(notifiche, "invia_telegram", return_value=(False, "errore di rete")):
             notifiche.invia_notifiche_scadenza(self.db)
         self.assertTrue(all(not log.esito for log in self.db.query(NotificaLog).all()))

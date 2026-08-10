@@ -1,5 +1,5 @@
 {# Results region swapped by HTMX on filter changes; also included by the full
-   page. Context: righe (list of (Servizio, cadenza label, effective data_fine,
+   page. Context: righe (list of (Servizio, cadenza label, cover end date,
    computed contract state)), filtri, etichette_stato (state -> label). #}
 {% set filtri_attivi = filtri.cliente or filtri.referente or filtri.stato %}
 {# Out-of-band swaps: the filter badge and "Azzera filtri" button live in the
@@ -17,7 +17,7 @@
             <th>Sede</th>
             <th class="sortable">Descrizione</th>
             <th class="sortable">Tipo</th>
-            <th class="sortable">Periodo</th>
+            <th class="sortable">Scadenza</th>
             <th>Cadenza</th>
             <th class="col-num">Qtà</th>
             <th class="col-num">Importo unit.</th>
@@ -30,7 +30,7 @@
         </tr>
     </thead>
     <tbody>
-        {% for s, cadenza, data_fine_eff, stato_s in righe %}
+        {% for s, cadenza, fine_cop, stato_s in righe %}
         {% include "servizi/_riga.html" %}
         {% endfor %}
     </tbody>

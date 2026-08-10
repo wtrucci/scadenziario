@@ -1,12 +1,14 @@
 """
-Tests for the manually-confirmed renewal flow (routes/servizi.py):
+Tests for the manually-confirmed renewal flow, end to end through the route.
 
-Billing the "renewal proposal" occurrence of a contract WITHOUT auto-renewal
-(the one occurrence past data_fine — see occorrenze_nel_periodo) is the
-client's confirmation: it extends the contract by one renewal block, moving
-data_fine forward. Un-billing that same occurrence retracts the block (the
-billing click was a mistake). Billing an occurrence WITHIN the contract
-period is plain bookkeeping and must not move any date.
+A contract WITHOUT auto-renewal stops generating at the first unbilled cycle
+opening: that occurrence is the renewal the customer still has to confirm, and
+nothing past it is known. Billing it IS the confirmation, and generation
+resumes on its own — no field on the contract is written, so un-billing puts
+the pending renewal straight back.
+
+Billing an instalment inside a commitment is plain bookkeeping and must not
+change what is generated beyond it.
 
 Run with:  python -m unittest discover -s tests
 Uses an isolated in-memory SQLite database; the real DB is never touched.
@@ -27,6 +29,10 @@ from app.database import Base
 from app.models.cliente import Cliente
 from app.models.enums import TipoServizio
 from app.models.servizio import Servizio
+from app.services.occorrenze import occorrenze_nel_periodo
+
+SCADENZA = date(2026, 8, 24)
+ORIZZONTE = (date(2020, 1, 1), date(2032, 12, 31))
 
 
 def _make_engine():
@@ -55,12 +61,11 @@ class TestRinnovoConfermato(unittest.TestCase):
         cliente = Cliente(nome="Acme", attivo=True)
         db.add(cliente)
         db.flush()
-        # Yearly license, no auto-renewal: period 2025-08-24 .. 2026-08-23,
-        # renewal proposal at 2026-08-24.
+        # Yearly licence to be confirmed each time: every occurrence is itself
+        # a renewal (durata_impegno_mesi left empty).
         s = Servizio(
             cliente=cliente, descrizione="Licenza", tipo=TipoServizio.licenza,
-            data_inizio=date(2025, 8, 24), data_fine=date(2026, 8, 23),
-            durata_mesi=12, cadenza_mesi=12, rinnovo_automatico=False,
+            data_scadenza=SCADENZA, cadenza_mesi=12, rinnovo_automatico=False,
             importo=Decimal("100.00"), quantita=1, valuta="EUR",
             preavviso_giorni=30,
         )
@@ -88,60 +93,89 @@ class TestRinnovoConfermato(unittest.TestCase):
     # --- helpers ---------------------------------------------------------
 
     def _toggle(self, data_occorrenza: date):
-        url = f"/servizi/{self.servizio_id}/occorrenze/{data_occorrenza.isoformat()}/fatturato"
-        r = self.client.post(url)
-        self.assertEqual(r.status_code, 200)
+        r = self.client.post(
+            f"/servizi/{self.servizio_id}/occorrenze/{data_occorrenza.isoformat()}/fatturato",
+            data={"mese": data_occorrenza.strftime("%Y-%m"), "vista": "dashboard"},
+        )
+        self.assertEqual(r.status_code, 200, r.text)
 
-    def _servizio(self) -> Servizio:
+    def _occorrenze(self) -> list[date]:
         db = self.SessionLocal()
         try:
-            return db.get(Servizio, self.servizio_id)
+            s = db.get(Servizio, self.servizio_id)
+            return [o.data_occorrenza for o in occorrenze_nel_periodo(s, *ORIZZONTE)]
         finally:
             db.close()
 
     # --- tests -----------------------------------------------------------
 
-    def test_fatturare_la_proposta_estende_il_contratto(self):
-        self._toggle(date(2026, 8, 24))  # bill the renewal proposal
+    def test_si_ferma_al_rinnovo_pendente(self):
+        self.assertEqual(self._occorrenze(), [SCADENZA])
 
-        s = self._servizio()
-        self.assertEqual(s.durata_mesi, 24)
-        self.assertEqual(s.data_fine, date(2027, 8, 23))
-        # The block length is remembered explicitly, so the NEXT confirmation
-        # extends by another 12 months, not by the accumulated 24.
-        self.assertEqual(s.durata_rinnovo_mesi, 12)
+    def test_fatturare_il_rinnovo_fa_ripartire_la_generazione(self):
+        self._toggle(SCADENZA)
+        self.assertEqual(self._occorrenze(), [SCADENZA, date(2027, 8, 24)])
 
-    def test_conferme_successive_estendono_di_un_blocco_ciascuna(self):
-        self._toggle(date(2026, 8, 24))
-        self._toggle(date(2027, 8, 24))  # next year's proposal
+    def test_conferme_successive_avanzano_di_un_anno_ciascuna(self):
+        self._toggle(SCADENZA)
+        self._toggle(date(2027, 8, 24))
+        self.assertEqual(
+            self._occorrenze(), [SCADENZA, date(2027, 8, 24), date(2028, 8, 24)])
 
-        s = self._servizio()
-        self.assertEqual(s.durata_mesi, 36)
-        self.assertEqual(s.data_fine, date(2028, 8, 23))
+    def test_smarcare_riporta_il_rinnovo_in_sospeso(self):
+        """Un-billing needs no bookkeeping to unwind: the pending renewal is
+        back simply because its state row says it is not billed."""
+        self._toggle(SCADENZA)
+        self._toggle(date(2027, 8, 24))
+        self._toggle(date(2027, 8, 24))          # un-bill the last confirmation
+        self.assertEqual(self._occorrenze(), [SCADENZA, date(2027, 8, 24)])
 
-    def test_smarcare_la_proposta_ritira_il_blocco(self):
-        self._toggle(date(2026, 8, 24))  # bill (extends to 24 months)
-        self._toggle(date(2026, 8, 24))  # un-bill: it was a mistake
+    def test_il_contratto_non_viene_mai_riscritto(self):
+        """The whole flow is driven by billing state: data_scadenza itself must
+        never move, so history and per-occurrence state stay attached to it."""
+        self._toggle(SCADENZA)
+        self._toggle(date(2027, 8, 24))
+        db = self.SessionLocal()
+        try:
+            self.assertEqual(db.get(Servizio, self.servizio_id).data_scadenza, SCADENZA)
+        finally:
+            db.close()
 
-        s = self._servizio()
-        self.assertEqual(s.durata_mesi, 12)
-        self.assertEqual(s.data_fine, date(2026, 8, 23))
 
-    def test_fatturare_dentro_il_periodo_non_muove_le_date(self):
-        self._toggle(date(2025, 8, 24))  # the occurrence within the period
+class TestRateDentroImpegno(unittest.TestCase):
+    """A commitment billed in instalments: only its opening is a renewal."""
 
-        s = self._servizio()
-        self.assertEqual(s.durata_mesi, 12)
-        self.assertEqual(s.data_fine, date(2026, 8, 23))
-        self.assertIsNone(s.durata_rinnovo_mesi)
+    def setUp(self):
+        self.engine = _make_engine()
+        self.db = sessionmaker(bind=self.engine)()
+        cliente = Cliente(nome="Acme", attivo=True)
+        self.db.add(cliente)
+        self.db.flush()
+        # Yearly commitment invoiced monthly.
+        self.s = Servizio(
+            cliente=cliente, descrizione="Abbonamento", tipo=TipoServizio.abbonamento,
+            data_scadenza=date(2026, 7, 1), cadenza_mesi=1, durata_impegno_mesi=12,
+            rinnovo_automatico=False, importo=Decimal("4.00"), quantita=8,
+            valuta="EUR", preavviso_giorni=30,
+        )
+        self.db.add(self.s)
+        self.db.commit()
 
-    def test_smarcare_dentro_il_periodo_non_muove_le_date(self):
-        self._toggle(date(2025, 8, 24))
-        self._toggle(date(2025, 8, 24))
+    def tearDown(self):
+        self.db.close()
+        self.engine.dispose()
 
-        s = self._servizio()
-        self.assertEqual(s.durata_mesi, 12)
-        self.assertEqual(s.data_fine, date(2026, 8, 23))
+    def test_senza_conferma_c_e_solo_il_rinnovo(self):
+        occ = [o.data_occorrenza for o in occorrenze_nel_periodo(self.s, *ORIZZONTE)]
+        self.assertEqual(occ, [date(2026, 7, 1)])
+
+    def test_confermato_l_impegno_le_rate_sono_certe(self):
+        from app.models.override_importo import OverrideImporto
+        self.s.override_importi.append(
+            OverrideImporto(data_occorrenza=date(2026, 7, 1), fatturato=True))
+        occ = [o.data_occorrenza for o in occorrenze_nel_periodo(self.s, *ORIZZONTE)]
+        self.assertEqual(len(occ), 13)                      # 12 instalments + next renewal
+        self.assertEqual(occ[-1], date(2027, 7, 1))
 
 
 if __name__ == "__main__":
