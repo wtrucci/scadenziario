@@ -27,6 +27,7 @@ from app.models.enums import TipoServizio, TipoNotifica
 from app.models.notifica_log import NotificaLog
 from app.models.servizio import Servizio
 from app.services import notifiche
+from app.services.occorrenze import occorrenze_nel_periodo
 
 OGGI = date(2026, 8, 8)
 
@@ -100,6 +101,39 @@ class TestNotifiche(unittest.TestCase):
         self.db.commit()
         candidati = notifiche.occorrenze_da_notificare(self.db, oggi=OGGI)
         self.assertEqual(candidati, [])
+
+    # --- rate dentro un impegno ---------------------------------------------
+
+    def test_le_rate_di_un_impegno_non_notificano(self):
+        """A yearly subscription invoiced monthly is ONE deadline, not twelve:
+        only the renewal is worth a notification. The instalments still appear
+        on the dashboard and in the summary — they are invoices to issue, not
+        deadlines to chase."""
+        # Commitment opened 11 months ago: the next occurrence is an instalment
+        # falling inside the warning window, the renewal is a month later.
+        s = self._servizio(
+            data_scadenza=OGGI - timedelta(days=334),   # ~11 months back
+            cadenza_mesi=1, durata_impegno_mesi=12,
+        )
+        candidati = notifiche.occorrenze_da_notificare(self.db, oggi=OGGI)
+        date_notificate = {c.data_riferimento for c in candidati}
+        rate = [
+            o.data_occorrenza
+            for o in occorrenze_nel_periodo(s, OGGI, OGGI + timedelta(days=30), oggi=OGGI)
+            if not o.apre_ciclo
+        ]
+        self.assertTrue(rate, "il caso di prova deve contenere almeno una rata")
+        self.assertEqual(date_notificate & set(rate), set())
+
+    def test_la_scadenza_dell_impegno_notifica(self):
+        """The commitment's own renewal must still be notified normally."""
+        s = self._servizio(
+            data_scadenza=OGGI + timedelta(days=5),
+            cadenza_mesi=1, durata_impegno_mesi=12,
+        )
+        candidati = notifiche.occorrenze_da_notificare(self.db, oggi=OGGI)
+        self.assertIn(TipoNotifica.preavviso, {c.tipo for c in candidati})
+        self.assertEqual({c.data_riferimento for c in candidati}, {s.data_scadenza})
 
     # --- promemoria fisso 7 giorni ------------------------------------------
 

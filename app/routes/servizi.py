@@ -32,9 +32,9 @@ from app.services.occorrenze import (
     STATI_CONTRATTO,
     Occorrenza,
     aggiungi_mesi,
-    fine_copertura,
     fine_impegno,
     mesi_impegno,
+    prossima_scadenza,
     scadenza_congelata,
     occorrenze_nel_periodo,
     stato_contratto,
@@ -334,11 +334,11 @@ def lista_servizi(
     servizi = db.scalars(query).all()
     oggi = date.today()
     # Each row carries a human-readable cadence label (mensile/trimestrale/...),
-    # the EFFECTIVE end date (so an auto-renewing contract shows its current,
-    # rolled-forward period instead of the originally stored one), and the
-    # computed contract state.
+    # the date the contract next comes due (NOT the stored data_scadenza, which
+    # is a fixed anchor and drifts into the past on an auto-renewing contract)
+    # and the computed contract state.
     righe = [
-        (s, etichetta_cadenza(s.cadenza_mesi), fine_copertura(s, oggi),
+        (s, etichetta_cadenza(s.cadenza_mesi), prossima_scadenza(s, oggi),
          stato_contratto(s, oggi=oggi))
         for s in servizi
     ]
@@ -496,6 +496,11 @@ def modifica_form(
             "servizio": s,
             "valori": _valori_da_servizio(s),
             "etichetta_stato_attuale": ETICHETTE_STATO_CONTRATTO[stato_contratto(s)],
+            # The editable field holds the anchor, which on a contract billed in
+            # instalments is NOT the expiry the operator has in mind. Show the
+            # computed expiry alongside it so opening a contract always answers
+            # "when does this expire?".
+            "prossima_scadenza": prossima_scadenza(s, date.today()),
             "errori": [],
             **choices,
         },
@@ -565,6 +570,7 @@ def aggiorna_servizio(
              "action": f"/servizi/{servizio_id}/modifica",
              "servizio": s, "valori": valori, "errori": errori,
              "etichetta_stato_attuale": ETICHETTE_STATO_CONTRATTO[stato_contratto(s)],
+             "prossima_scadenza": prossima_scadenza(s, date.today()),
              **choices},
             status_code=422,
         )

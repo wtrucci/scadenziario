@@ -10,6 +10,14 @@ a failed attempt is not "already notified" and is retried on the next run):
    "in_scadenza" state).
 2. ``promemoria_7_giorni``  — a fixed extra reminder 7 days before an
    occurrence, regardless of the service's own ``preavviso_giorni``.
+
+Both occurrence triggers only ever fire on a RENEWAL (``Occorrenza.apre_ciclo``),
+never on an instalment inside a commitment: a yearly subscription invoiced
+monthly is one deadline to act on, not twelve, and notifying every instalment
+would train the operator to ignore the channel. The instalments still show up
+on the dashboard and in the monthly summary — they are invoices to issue, not
+deadlines to chase. For the usual contract (empty ``durata_impegno_mesi``)
+every occurrence is a renewal, so nothing changes.
 3. ``contratto_scaduto``    — the CONTRACT itself (not a single occurrence)
    has reached ``stato_contratto == "scaduto"``. This never fires for a
    ``rinnovo_automatico`` contract: its effective end date is never in the
@@ -88,7 +96,7 @@ def occorrenze_da_notificare(db: Session, oggi: date | None = None) -> list[Cand
         for occ in occorrenze_nel_periodo(
             servizio, oggi, oggi + timedelta(days=servizio.preavviso_giorni), oggi=oggi
         ):
-            if occ.stato_visivo != "in_scadenza":
+            if not occ.apre_ciclo or occ.stato_visivo != "in_scadenza":
                 continue
             chiave = (occ.data_occorrenza, TipoNotifica.preavviso)
             if chiave not in gia_notificate:
@@ -101,7 +109,7 @@ def occorrenze_da_notificare(db: Session, oggi: date | None = None) -> list[Cand
         for occ in occorrenze_nel_periodo(
             servizio, oggi, oggi + timedelta(days=GIORNI_PROMEMORIA_FISSO), oggi=oggi
         ):
-            if occ.fatturato:
+            if not occ.apre_ciclo or occ.fatturato:
                 continue
             chiave = (occ.data_occorrenza, TipoNotifica.promemoria_7_giorni)
             if chiave not in gia_notificate:

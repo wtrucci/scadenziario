@@ -582,6 +582,17 @@ dialog.colonne-dialog h3 { margin: 0 0 1rem; font-size: 1rem; }
 }
 .anteprima-ok { margin: 0 0 0.5rem; color: var(--muted); }
 
+/* The computed expiry shown next to the (editable) cycle start. Read-only, so
+   it is styled as a statement rather than a field. */
+.scadenza-calcolata {
+    margin: -0.35rem 0 1rem;
+    padding: 0.5rem 0.65rem;
+    border-left: 3px solid var(--primary);
+    background: var(--off-bg);
+    border-radius: 0 6px 6px 0;
+}
+.scadenza-calcolata .muted { font-size: 0.85em; }
+
 tr.pag-hidden { display: none; }
 /* Rows hidden by the "nascondi scaduti e disdetti" display preference. They
    are also excluded from the pagination count (see applicaPaginazione). */

@@ -169,6 +169,19 @@ le scelte tecniche quando non sono banali.
 
 - CRUD completo clienti e servizi.
 - La pagina servizi mostra anche la colonna **Referente**.
+- **La "Scadenza" mostrata NON è `data_scadenza`**: è `prossima_scadenza`, cioè
+  la data del prossimo RINNOVO, calcolata. Due ragioni:
+  - `data_scadenza` è un'ancora che non si muove mai, quindi su un contratto a
+    rinnovo automatico scivola nel passato mentre il contratto è vivissimo;
+  - le **rate non sono scadenze**. Un abbonamento annuale fatturato ogni mese
+    scade una volta l'anno, non dodici: le rate sono fatture da emettere e
+    vivono in dashboard e nel riepilogo. Si escludono con `apre_ciclo`.
+  Se non c'è nessun rinnovo futuro si mostra l'ultimo (un rinnovo mai
+  confermato è proprio ciò che va guardato); se non c'è alcuna occorrenza
+  (contratto disdetto) si ripiega sull'ancora.
+  Nel form la data modificabile resta l'ancora, etichettata **"Decorrenza del
+  ciclo corrente"**, e accanto compare la scadenza calcolata in sola lettura:
+  aprire un contratto deve sempre rispondere a "quando scade?".
 - Dashboard: mostra le **occorrenze** che cadono nel mese selezionato (NON i
   servizi una volta sola). Un servizio mensile valido per 12 mesi compare in
   12 mesi diversi, uno trimestrale ogni 3 mesi, ecc.
@@ -182,7 +195,22 @@ le scelte tecniche quando non sono banali.
   - L'utente può marcare/smarcare "fatturato" su una singola occorrenza
     (toggle, via HTMX), che crea/aggiorna la relativa riga di stato.
 - Filtri su pagina servizi e dashboard: per cliente, per referente e per stato
-  (es. fatturato / da fatturare). I filtri sono combinabili.
+  (es. fatturato / da fatturare). I filtri sono combinabili. Vivono nella query
+  string, quindi sono condivisibili con un link ma NON sopravvivono alla
+  navigazione: sono una domanda del momento, non una preferenza.
+- **Preferenze di visualizzazione delle tabelle** (colonne visibili, righe per
+  pagina, ordinamento, "nascondi contratti scaduti e disdetti"): al contrario
+  dei filtri sono scelte durature, quindi si salvano in `localStorage` e si
+  riapplicano ad ogni caricamento — chi torna dalla modifica di un servizio
+  ritrova la tabella come l'aveva lasciata. Sono applicate lato client
+  (`base.html`), senza round-trip al server.
+  - "Nascondi scaduti e disdetti" esiste SOLO nella pagina servizi: la
+    dashboard mostra occorrenze di un mese, dove "scaduto" non è un criterio
+    sensato. Si appoggia a `data-stato` sulla riga, e la paginazione deve
+    contare solo le righe non nascoste.
+  - Quando una preferenza sta nascondendo dei dati, l'icona che apre la
+    finestra mostra un indicatore visivo: una tabella filtrata non deve mai
+    sembrare una tabella vuota.
 - Vista "riepilogo da fatturare" per un mese selezionato:
   - Esclude SOLO le occorrenze di servizi disdetti (`Servizio.disdetto`);
     "scaduto"/"in scadenza"/"attivo" non influenzano questo filtro (sono stato
@@ -204,6 +232,13 @@ le scelte tecniche quando non sono banali.
   monetari, mai float.
 - Invio notifiche automatiche secondo la soglia di preavviso (sulle occorrenze
   in avvicinamento).
+  - Si notificano SOLO le occorrenze che aprono un ciclo (`apre_ciclo`), cioè i
+    rinnovi, mai le rate interne a un impegno: un abbonamento annuale fatturato
+    ogni mese è UNA scadenza da presidiare, non dodici, e avvisare ad ogni rata
+    abitua l'operatore a ignorare il canale. Le rate restano visibili in
+    dashboard e nel riepilogo — sono fatture da emettere, non scadenze da
+    inseguire. Con `durata_impegno_mesi` vuota ogni occorrenza è un rinnovo,
+    quindi per il contratto normale non cambia nulla.
 - Gestione utenti (solo admin).
 
 > NOTA: con il modello a occorrenze calcolate, lo "scheduler di avanzamento

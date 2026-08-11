@@ -177,6 +177,20 @@ class TestRinnovoDaConfermare(unittest.TestCase):
         self.assertEqual(len(occ), 13)          # 12 instalments + next renewal
         self.assertEqual(occ[-1], date(2027, 7, 1))
 
+    def test_cadenza_che_non_divide_l_impegno_si_ferma_comunque(self):
+        """The cycle boundary must be found by REACHING it, not by landing
+        exactly on it: with cadenza 5 and impegno 12 no occurrence falls on
+        month 12, and a divisibility test would let the contract generate for
+        ever instead of stopping at the renewal to be confirmed."""
+        s = _servizio(date(2026, 3, 1), cadenza_mesi=5, durata_impegno_mesi=12,
+                      rinnovo_automatico=False)
+        _fattura(s, date(2026, 3, 1))
+        occ = _date(occorrenze.occorrenze_nel_periodo(s, *TUTTO))
+        # Months 0, 5, 10 are inside the commitment; month 15 is the first one
+        # past its end, so that is the renewal proposal and generation stops.
+        self.assertEqual(occ, [date(2026, 3, 1), date(2026, 8, 1),
+                               date(2027, 1, 1), date(2027, 6, 1)])
+
     def test_disdetto_non_propone_nulla(self):
         s = _servizio(date(2026, 8, 24), cadenza_mesi=12,
                       rinnovo_automatico=False, disdetto=True)
@@ -300,6 +314,55 @@ class TestDateHelper(unittest.TestCase):
         s = _servizio(date(2020, 3, 1), cadenza_mesi=12, rinnovo_automatico=True)
         self.assertEqual(
             occorrenze.scadenza_congelata(s, date(2026, 8, 10)), date(2026, 3, 1))
+
+
+class TestProssimaScadenza(unittest.TestCase):
+    """What the services list shows in the "Scadenza" column. data_scadenza is
+    a fixed anchor, so on a live auto-renewing contract it drifts into the past
+    and must not be shown raw."""
+
+    OGGI = date(2026, 8, 11)
+
+    def test_contratto_futuro_mostra_la_sua_data(self):
+        s = _servizio(date(2028, 10, 14), cadenza_mesi=12, rinnovo_automatico=False)
+        self.assertEqual(occorrenze.prossima_scadenza(s, self.OGGI), date(2028, 10, 14))
+
+    def test_auto_rinnovo_mostra_la_prossima_non_l_ancora(self):
+        s = _servizio(date(2020, 3, 1), cadenza_mesi=12, rinnovo_automatico=True)
+        self.assertEqual(occorrenze.prossima_scadenza(s, self.OGGI), date(2027, 3, 1))
+
+    def test_le_rate_non_sono_scadenze(self):
+        """Sentinel One: a yearly commitment invoiced monthly expires ONCE a
+        year. The instalment due on 01/09 is an invoice to issue, not the
+        contract's expiry — the expiry is the renewal at the end of the 12
+        months."""
+        s = _servizio(date(2026, 7, 1), cadenza_mesi=1, durata_impegno_mesi=12,
+                      rinnovo_automatico=True)
+        self.assertEqual(occorrenze.prossima_scadenza(s, self.OGGI), date(2027, 7, 1))
+
+    def test_rinnovo_mai_confermato_resta_visibile(self):
+        """Nothing lies ahead — generation stopped at a renewal nobody
+        confirmed. That pending date IS what the operator has to look at, so it
+        must be shown rather than falling through to something else."""
+        s = _servizio(date(2023, 9, 24), cadenza_mesi=12, rinnovo_automatico=False)
+        self.assertEqual(occorrenze.prossima_scadenza(s, self.OGGI), date(2023, 9, 24))
+
+    def test_fatturare_in_anticipo_sposta_subito_la_scadenza(self):
+        """Invoicing a renewal before its date arrives extends the cover there
+        and then, so the expiry must move with it — not stay put until the date
+        goes by. Picking against ``oggi`` instead of the cover would keep
+        showing the renewal just paid for."""
+        s = _servizio(date(2026, 8, 24), cadenza_mesi=12, rinnovo_automatico=False)
+        self.assertEqual(occorrenze.prossima_scadenza(s, self.OGGI), date(2026, 8, 24))
+        _fattura(s, date(2026, 8, 24))          # billed 13 days early
+        self.assertEqual(occorrenze.prossima_scadenza(s, self.OGGI), date(2027, 8, 24))
+
+    def test_disdetto_ripiega_sull_ancora(self):
+        """A cancelled contract generates nothing at all: with no occurrence to
+        show, the stored date is the only thing left."""
+        s = _servizio(date(2026, 5, 1), cadenza_mesi=12,
+                      rinnovo_automatico=False, disdetto=True)
+        self.assertEqual(occorrenze.prossima_scadenza(s, self.OGGI), date(2026, 5, 1))
 
 
 if __name__ == "__main__":

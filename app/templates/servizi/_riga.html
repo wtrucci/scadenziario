@@ -1,7 +1,8 @@
 {# Partial: one <tr> for the servizi list.
-   Context: s (Servizio), cadenza (human-readable cadence label), fine_cop
-   (effective end date, rolled forward if rinnovo_automatico is set), stato_s
-   (computed contract state), etichette_stato (state -> label). #}
+   Context: s (Servizio), cadenza (human-readable cadence label), prossima
+   (date the contract next comes due — computed, see prossima_scadenza; NOT
+   s.data_scadenza, which is a fixed anchor), stato_s (computed contract
+   state), etichette_stato (state -> label). #}
 {# data-stato carries the computed contract state so the "nascondi scaduti e
    disdetti" display preference (saved in localStorage, see base.html) can hide
    the row client-side without a round-trip. #}
@@ -11,9 +12,8 @@
     <td class="cell-secondary">{% if s.luogo_installazione %}{{ s.luogo_installazione }}{% else %}—{% endif %}</td>
     <td>{{ s.descrizione }}</td>
     <td><span class="badge badge-tipo">{{ s.tipo.value }}</span></td>
-    <td class="col-data cell-secondary" data-sort="{{ s.data_scadenza.isoformat() }}">
-        {{ s.data_scadenza.strftime('%d/%m/%Y') }}
-        <span class="cell-secondary">→ {{ fine_cop.strftime('%d/%m/%Y') }}</span>
+    <td class="col-data cell-secondary" data-sort="{{ prossima.isoformat() }}">
+        {{ prossima.strftime('%d/%m/%Y') }}
         {% if s.rinnovo_automatico %}
         <span class="badge badge-tipo" title="Si rinnova automaticamente ogni {{ s.durata_impegno_mesi or s.cadenza_mesi }} mesi">↻ auto</span>
         {% endif %}

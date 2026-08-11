@@ -43,6 +43,12 @@ class Occorrenza:
     da_override: bool      # True only for a deliberate manual override (not a billing snapshot)
     fatturato: bool        # True if this occurrence has been marked as billed
     stato_visivo: str      # "fatturato" | "da_fatturare" | "in_scadenza" | "normale"
+    # True when this occurrence opens a commitment (i.e. it is a renewal), False
+    # when it is an instalment inside one. With an empty durata_impegno_mesi
+    # every occurrence opens a commitment, so this is True for all of them.
+    # Notifications use it to warn about the contract's own deadline only, not
+    # about each instalment (see app/services/notifiche.py).
+    apre_ciclo: bool = True
 
     @property
     def totale(self) -> Decimal:
@@ -237,7 +243,7 @@ def occorrenze_nel_periodo(
     stato_per_data = {ov.data_occorrenza: ov for ov in servizio.override_importi}
     occorrenze: list[Occorrenza] = []
 
-    def aggiungi(data_occ: date) -> None:
+    def aggiungi(data_occ: date, apre_ciclo: bool) -> None:
         """Materialise one occurrence, applying its state row if any."""
         if not (data_da <= data_occ <= data_a):
             return
@@ -262,18 +268,27 @@ def occorrenze_nel_periodo(
                 data_occ, fatturato, servizio.preavviso_giorni, oggi,
                 disdetto=servizio.disdetto,
             ),
+            apre_ciclo=apre_ciclo,
         ))
 
     # Walk forward from the cycle start. Each occurrence that lands on a cycle
     # boundary opens a new commitment; the ones in between are its instalments.
     impegno = mesi_impegno(servizio)
+    # A new commitment opens at the first occurrence that reaches or passes the
+    # current one's end. Testing ``scarto % impegno`` instead would only work
+    # while the cadence divides the commitment: with cadenza 5 and impegno 12 no
+    # occurrence ever lands on month 12, so no boundary would ever be recognised
+    # and a contract awaiting confirmation would generate forever.
+    inizio_ciclo = 0
     passo = 0
     while True:
         scarto = passo * servizio.cadenza_mesi
         data_occ = aggiungi_mesi(servizio.data_scadenza, scarto)
         if data_occ > data_a:
             break
-        apre_un_ciclo = scarto % impegno == 0
+        apre_un_ciclo = scarto >= inizio_ciclo + impegno or passo == 0
+        if apre_un_ciclo:
+            inizio_ciclo = scarto
         if not servizio.rinnovo_automatico and apre_un_ciclo:
             stato = stato_per_data.get(data_occ)
             if stato is None or not stato.fatturato:
@@ -283,9 +298,61 @@ def occorrenze_nel_periodo(
                 # generation resumes from the next cycle on its own. A cancelled
                 # contract is not even asked.
                 if not servizio.disdetto:
-                    aggiungi(data_occ)
+                    aggiungi(data_occ, True)
                 break
-        aggiungi(data_occ)
+        aggiungi(data_occ, apre_un_ciclo)
         passo += 1
 
     return occorrenze
+
+
+# How far ahead ``prossima_scadenza`` looks. Ten years covers any realistic
+# cadence (the longest here is yearly) while keeping the walk bounded for an
+# auto-renewing contract, whose occurrences would otherwise never end.
+ANNI_ORIZZONTE_PROSSIMA = 10
+
+
+def prossima_scadenza(servizio: Servizio, oggi: date) -> date:
+    """When the contract next expires, i.e. the date of the next RENEWAL.
+
+    Instalments are deliberately ignored: a yearly subscription invoiced monthly
+    expires once a year, not twelve times. Its instalments are invoices to
+    issue, and they belong to the dashboard and the monthly summary — not to the
+    contract's expiry date. Only occurrences that open a commitment
+    (``apre_ciclo``) count here.
+
+    ``data_scadenza`` itself is an anchor that never moves: renewals are
+    computed, not written back (see the module docstring). So on an
+    auto-renewing contract the stored date drifts into the past while the
+    contract is perfectly alive, and showing it raw would make a current
+    contract look stale.
+
+    It is the first renewal that is both still ahead AND not already invoiced.
+    Both conditions earn their place:
+
+    - *still ahead* skips the opening of the cycle currently running, which on
+      a contract billed in instalments sits months in the past (Sentinel One:
+      the cycle opened in July, the contract expires the following June);
+    - *not invoiced* is what makes invoicing a renewal early — exactly what the
+      warning window encourages — move the expiry there and then, instead of
+      leaving the date just paid for on screen until it goes by.
+
+    When no renewal qualifies the last one is returned rather than nothing: for
+    a contract awaiting a renewal that was never confirmed, that pending date
+    IS the thing to look at. ``data_scadenza`` is the last resort, used only
+    when there are no occurrences at all (a cancelled contract).
+    """
+    orizzonte = aggiungi_mesi(oggi, 12 * ANNI_ORIZZONTE_PROSSIMA)
+    rinnovi = [
+        occ
+        for occ in occorrenze_nel_periodo(
+            servizio, servizio.data_scadenza, orizzonte, oggi=oggi
+        )
+        if occ.apre_ciclo
+    ]
+    if not rinnovi:
+        return servizio.data_scadenza
+    for occ in rinnovi:
+        if occ.data_occorrenza >= oggi and not occ.fatturato:
+            return occ.data_occorrenza
+    return rinnovi[-1].data_occorrenza

@@ -89,11 +89,14 @@
          di quando il servizio e' partito e non entra in nessun calcolo. #}
     <div class="field-row-2">
         <div class="field">
-            <label for="data_scadenza">Data di scadenza <span class="required">*</span></label>
+            <label for="data_scadenza">Decorrenza del ciclo corrente <span class="required">*</span></label>
             <input type="text" class="date-picker" id="data_scadenza" name="data_scadenza"
                    value="{{ valori.data_scadenza }}" required>
             <small class="muted">
-                Da qui parte il ciclo corrente: ad ogni rinnovo avanza da sola.
+                Il giorno da cui parte il ciclo di fatturazione in corso. Per un
+                contratto normale coincide con la scadenza. Se compili "Durata
+                impegno" metti qui l'<strong>inizio</strong> dell'impegno, non la
+                sua fine: le rate partono da questa data e vanno in avanti.
             </small>
         </div>
         <div class="field">
@@ -103,6 +106,18 @@
             <small class="muted">Solo promemoria di quando il servizio e' partito.</small>
         </div>
     </div>
+
+    {# The editable field above holds the anchor, which on a contract billed in
+       instalments is NOT the expiry the operator has in mind. The expiry is
+       computed (next renewal, instalments excluded), so it is shown read-only:
+       opening a contract must always answer "when does this expire?". #}
+    {% if prossima_scadenza is defined %}
+    <p class="scadenza-calcolata">
+        Scadenza: <strong>{{ prossima_scadenza.strftime('%d/%m/%Y') }}</strong>
+        <span class="muted">— data del prossimo rinnovo, calcolata. Le rate
+        intermedie non sono scadenze: si vedono in dashboard e nel riepilogo.</span>
+    </p>
+    {% endif %}
 
     <div class="field field-inline">
         <input type="checkbox" id="rinnovo_automatico" name="rinnovo_automatico"
@@ -229,15 +244,26 @@
             var fineImpegno = aggiungiMesi(scadenza, impegno);
             fineImpegno.setDate(fineImpegno.getDate() - 1);
 
+            // The list is capped at MAX, the COUNT is not: nelImpegno must say
+            // how many invoices the commitment really produces (12 for a yearly
+            // one billed monthly), otherwise the note below would just report
+            // how many rows happen to fit on screen.
             var MAX = 6;
             var mostrate = [], nelImpegno = 0, proposta = null, passo = 0;
             while (true) {
                 var d = aggiungiMesi(scadenza, passo * cadenza);
                 var dentro = d <= fineImpegno;
-                if (!auto && !dentro) { proposta = d; break; }
-                if (dentro) nelImpegno++;
-                if (mostrate.length >= MAX) break;
-                mostrate.push({ d: d, dentro: dentro });
+                if (dentro) {
+                    nelImpegno++;
+                } else if (!auto) {
+                    proposta = d;
+                    break;
+                }
+                if (mostrate.length < MAX) {
+                    mostrate.push({ d: d, dentro: dentro });
+                } else if (!dentro) {
+                    break;          // list full and commitment over: nothing left to count
+                }
                 passo++;
             }
             var nascoste = nelImpegno - mostrate.filter(function (v) { return v.dentro; }).length;

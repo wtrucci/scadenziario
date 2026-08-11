@@ -13,11 +13,16 @@ finali.
 ## Funzionalità
 
 - **Clienti e servizi**: anagrafica clienti, servizi come contratti
-  ricorrenti (data inizio, durata in mesi, cadenza di fatturazione,
-  importo, quantità, rinnovo automatico).
+  ricorrenti (data di scadenza, cadenza di fatturazione, importo,
+  quantità, rinnovo automatico).
 - **Occorrenze calcolate**: le singole scadenze fatturabili non sono
-  righe nel database, ma calcolate al volo dal contratto (data inizio +
-  cadenza), incluso il rinnovo automatico.
+  righe nel database, ma calcolate al volo avanzando di `cadenza_mesi`
+  dalla data di scadenza del contratto (vedi
+  [Come funziona un contratto](#come-funziona-un-contratto)).
+- **Proposta di rinnovo**: per i contratti senza rinnovo automatico
+  l'app si ferma al primo rinnovo non ancora fatturato — la decisione
+  spetta al cliente, e oltre non si può sapere nulla. Fatturare quella
+  occorrenza vale come conferma e fa proseguire il calcolo.
 - **Dashboard mensile**: tutte le occorrenze del mese selezionato, con
   stato visivo (Da fatturare / In scadenza / Fatturato), filtri per
   cliente/referente/stato e toggle "fatturato" per occorrenza.
@@ -31,6 +36,35 @@ finali.
   di contratto scaduto (mai per i contratti a rinnovo automatico).
   Supporta l'invio a un topic specifico nei supergruppi Telegram.
 - **Autenticazione**: login con sessioni, password con hashing bcrypt.
+
+## Come funziona un contratto
+
+Tutto si regge su **una sola data**: `data_scadenza`, il giorno da cui
+parte il ciclo di fatturazione corrente. Le occorrenze si generano
+avanzando di `cadenza_mesi` da lì (1 = mensile, 12 = annuale…), sempre
+sullo stesso giorno del mese; se un mese è troppo corto (il 31 a
+febbraio) si usa l'ultimo giorno valido e il giorno si recupera appena
+un mese è di nuovo abbastanza lungo, senza deriva.
+
+Gli altri campi servono solo nei casi particolari:
+
+| Campo | A cosa serve |
+|---|---|
+| `durata_impegno_mesi` | Solo se un impegno si fattura **a rate**: un abbonamento annuale fatturato ogni mese è `cadenza_mesi=1, durata_impegno_mesi=12`. Lasciato vuoto, ogni occorrenza è già un rinnovo — è il caso normale. |
+| `rinnovo_automatico` | Il ciclo si ripete senza chiedere nulla, quindi le occorrenze proseguono all'infinito. Senza, il calcolo si ferma alla proposta di rinnovo. |
+| `data_inizio` | Solo un promemoria di quando il servizio è partito: non entra in nessun calcolo. |
+| `disdetto` | Sopprime gli alert e la proposta di rinnovo, ed esclude il servizio dal riepilogo. |
+
+Lo stato mostrato in elenco (Attivo / In scadenza / Scaduto / Disdetto)
+non è una colonna del database: è calcolato da fin dove il cliente
+risulta coperto. Un contratto a rinnovo automatico non è mai "Scaduto" —
+si rinnova che tu abbia fatturato o no, quindi una fattura in ritardo
+compare come "da fatturare", che è il problema reale.
+
+**Fatturare non riscrive mai il contratto.** `data_scadenza` non si
+muove: l'unica cosa che cambia è la riga di stato dell'occorrenza, per
+cui smarcare una fatturazione rimette semplicemente in sospeso il
+rinnovo, senza contabilità da disfare.
 
 ## Stack tecnologico
 
