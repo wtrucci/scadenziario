@@ -46,8 +46,9 @@ le scelte tecniche quando non sono banali.
   scadenza, fatturazione, ecc.), ridefinite sotto `:root[data-theme="dark"]`.
 - **Scheduler notifiche:** APScheduler nel processo applicativo.
 - **Autenticazione:** login utente/password con hashing sicuro (bcrypt/argon2),
-  sessioni. Ruoli base (admin / utente). Predisporre per futura integrazione
-  OIDC, ma NON implementarla ora.
+  sessioni. Il modello Utente ha un campo `ruolo` (admin / utente) ma NON è
+  usato per autorizzare: chi entra vede tutto. Predisporre per futura
+  integrazione OIDC, ma NON implementarla ora.
 
 ## Canali di notifica
 
@@ -239,7 +240,6 @@ le scelte tecniche quando non sono banali.
     dashboard e nel riepilogo — sono fatture da emettere, non scadenze da
     inseguire. Con `durata_impegno_mesi` vuota ogni occorrenza è un rinnovo,
     quindi per il contratto normale non cambia nulla.
-- Gestione utenti (solo admin).
 
 > NOTA: con il modello a occorrenze calcolate, lo "scheduler di avanzamento
 > automatico delle scadenze" non serve: sia le occorrenze sia (quando
@@ -274,6 +274,9 @@ le scelte tecniche quando non sono banali.
 - Niente email/SMTP.
 - Niente webhook (rimandati a fase successiva; canale notifiche estendibile).
 - Niente integrazione OIDC/AD (solo predisporre).
+- Niente gestione utenti da interfaccia (CRUD utenti, cambio password, ruoli
+  applicati): il primo admin si crea da `.env` al primo avvio e per ora basta.
+  Il campo `ruolo` esiste sul modello ma non autorizza nulla.
 - Niente PostgreSQL come default (ma non precludere la migrazione).
 - Niente fatturazione vera in questa fase (niente numerazione fiscale,
   PDF/A, firma digitale, invio automatico al cliente): solo riepilogo,
