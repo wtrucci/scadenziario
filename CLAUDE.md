@@ -265,6 +265,20 @@ le scelte tecniche quando non sono banali.
 - Solo copie locali: portarle fuori sede è compito dell'host (rsync, client
   cloud), per non mettere credenziali di terze parti nell'app.
 
+## Rilascio
+
+- La versione vive in **`app/__init__.py`** (`__version__`) ed è l'unica fonte:
+  da lì la leggono l'interfaccia (piè di pagina della sidebar, via
+  `templates.env.globals`) e le API docs. `APP_VERSION` può sovrascriverla per
+  una build particolare, senza toccare il sorgente.
+- **Aggiornare `__version__` nello stesso commit che si tagga**: altrimenti
+  l'interfaccia dichiara una versione che non esiste. Un test in
+  `tests/test_versione.py` verifica che i punti restino allineati fra loro.
+- Su GitHub **tag e release sono due cose diverse**: il push del tag fa partire
+  il workflow Docker ma NON crea la release, che va creata a parte
+  (`gh release create`). Dalla 0.8.1 in poi si crea sempre; le versioni
+  precedenti alla 0.8.1 restano volutamente senza release.
+
 ## Convenzioni di progetto
 
 - Configurazione SOLO via variabili d'ambiente (token Telegram, URL webhook,

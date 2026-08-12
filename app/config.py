@@ -9,6 +9,8 @@ import os
 
 from dotenv import load_dotenv
 
+from app import __version__
+
 load_dotenv()
 
 
@@ -21,6 +23,11 @@ def _get_bool(name: str, default: bool) -> bool:
 
 
 class Settings:
+    # Version shown in the interface. Normally the one baked into the package;
+    # APP_VERSION can override it so a build can stamp something more precise
+    # (a commit, a pre-release) without editing the source.
+    APP_VERSION: str = os.environ.get("APP_VERSION", "").strip() or __version__
+
     # Secret used to sign session cookies. No safe default: must be set explicitly.
     SECRET_KEY: str = os.environ.get("SECRET_KEY", "")
 

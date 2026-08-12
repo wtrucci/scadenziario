@@ -50,7 +50,7 @@ async def lifespan(app: FastAPI):
     ferma_scheduler()
 
 
-app = FastAPI(title="Scadenziario", lifespan=lifespan)
+app = FastAPI(title="Scadenziario", version=settings.APP_VERSION, lifespan=lifespan)
 
 # Signs the session cookie with SECRET_KEY (itsdangerous under the hood).
 # We store only the user id inside; everything else is reloaded from the DB.

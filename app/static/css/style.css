@@ -200,6 +200,7 @@ a:hover { color: var(--primary-hover); }
     display: flex;
     align-items: center;
     justify-content: space-between;
+    flex-wrap: wrap;
     gap: 0.75rem;
     /* Sticks to the bottom of the sidebar even without .sidebar-nav's flex:1
        spacer above it (logged-out state has no nav, e.g. the login page). */
@@ -213,6 +214,17 @@ a:hover { color: var(--primary-hover); }
     align-items: center;
     gap: 0.6rem;
     font-size: 0.85rem;
+}
+
+/* Its own line under the theme toggle and the user: the footer row is already
+   a space-between pair, and squeezing a third item in there would crowd both.
+   Discreet on purpose — it answers "which version am I on?" when asked, and
+   stays out of the way the rest of the time. */
+.app-version {
+    flex-basis: 100%;
+    font-size: 0.75rem;
+    color: var(--muted);
+    font-variant-numeric: tabular-nums;
 }
 
 @media (max-width: 720px) {
