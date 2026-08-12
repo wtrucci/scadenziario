@@ -248,6 +248,23 @@ le scelte tecniche quando non sono banali.
 > sul DB. Il modello RinnovoLog non esiste: il rinnovo non produce una riga di
 > log, è puro calcolo. Resta valido lo scheduler per le NOTIFICHE.
 
+## Backup
+
+- Job APScheduler notturno (accanto a quello delle notifiche) che copia il DB
+  in `data/backup/`, configurato da `BACKUP_*`. Il codice sta in
+  `app/services/backup.py`.
+- La copia usa **`sqlite3.backup()`**, mai `cp`: l'app può scrivere mentre il
+  job gira e una copia grezza può risultare inservibile.
+- Ogni copia viene **riaperta e verificata** con `PRAGMA integrity_check`; se
+  fallisce viene cancellata e parte un avviso Telegram. Un backup corrotto
+  lasciato lì è peggio di nessun backup, perché sembra un punto di ripristino.
+- Il nome porta un timestamp al secondo, quindi due esecuzioni ravvicinate
+  devono prendere nomi diversi: un fallimento cancella il PROPRIO file, e senza
+  il suffisso distruggerebbe la copia buona appena fatta.
+- `BACKUP_KEEP` < 1 significa "tieni tutto", MAI "cancella tutto".
+- Solo copie locali: portarle fuori sede è compito dell'host (rsync, client
+  cloud), per non mettere credenziali di terze parti nell'app.
+
 ## Convenzioni di progetto
 
 - Configurazione SOLO via variabili d'ambiente (token Telegram, URL webhook,

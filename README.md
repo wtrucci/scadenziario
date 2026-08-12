@@ -36,6 +36,8 @@ finali.
   di contratto scaduto (mai per i contratti a rinnovo automatico).
   Supporta l'invio a un topic specifico nei supergruppi Telegram.
 - **Autenticazione**: login con sessioni, password con hashing bcrypt.
+- **Backup automatico**: copia notturna del database, verificata con
+  `integrity_check` e ruotata (vedi [Backup e ripristino](#backup-e-ripristino)).
 
 ## Come funziona un contratto
 
@@ -128,14 +130,10 @@ docker compose down          # ferma e rimuove il container (i dati restano in .
 finisce il file SQLite (`data/scadenziario.db`), non in un volume Docker
 "nascosto". Vantaggi pratici:
 
-- il backup è copiare la cartella `data/` (l'app va fermata prima, per
-  evitare di copiare il file mentre SQLite ci scrive);
 - il database resta a disposizione anche rimuovendo il container
   (`docker compose down`) o l'immagine;
 - `data/` è già esclusa da Git (vedi `.gitignore`), quindi non c'è rischio
   di versionare per sbaglio dati reali dei clienti.
-
-La cartella viene creata automaticamente al primo avvio se non esiste già.
 
 ### Sviluppo: buildare l'immagine in locale invece di scaricarla
 
@@ -166,6 +164,67 @@ docker pull ghcr.io/wtrucci/scadenziario:0.1.0
 > Change visibility), altrimenti richiede autenticazione anche solo per il
 > download.
 
+## Backup e ripristino
+
+L'app fa da sé una copia del database ogni notte alle 03:00 (configurabile,
+vedi `BACKUP_*` in `.env.example`), in `data/backup/`. Tiene le ultime 30
+copie giornaliere e cancella le più vecchie.
+
+Due dettagli non ovvi:
+
+- la copia usa l'API `backup()` di SQLite, non `cp`: l'app può stare
+  scrivendo mentre il job gira, e una copia grezza in quel momento può
+  risultare inservibile;
+- ogni copia appena scritta viene **riaperta e verificata** con
+  `PRAGMA integrity_check`. Se non passa viene cancellata e parte un avviso
+  Telegram, perché un backup corrotto lasciato nella cartella è peggio di
+  nessun backup: sembra un punto di ripristino.
+
+Le copie stanno **accanto al database**, dentro lo stesso volume: ti
+proteggono da una cancellazione per sbaglio, da un import andato storto o da
+una corruzione del file, **non** dalla perdita del disco. Per quella serve una
+copia fuori sede — un `rsync` di `data/backup/` verso un NAS o uno spazio
+cloud — deliberatamente lasciata all'host, per non mettere credenziali di
+terze parti dentro l'applicazione.
+
+### Ripristinare
+
+Ogni backup è un database SQLite completo e autonomo: ripristinare significa
+rimettere quel file al posto di quello corrente. Il database usa
+`journal_mode = delete`, quindi non ci sono file `-wal`/`-shm` da tenere
+allineati: c'è un solo file da sostituire.
+
+```bash
+docker compose down                                  # 1. ferma l'app SEMPRE
+cp data/scadenziario.db data/scadenziario.db.prima   # 2. mettiti al riparo
+cp data/backup/scadenziario-AAAAMMGG-HHMMSS.db data/scadenziario.db
+docker compose up -d
+```
+
+Il passo 1 non è opzionale: sostituire il file mentre l'app lo tiene aperto
+lascia il processo agganciato al file vecchio. Il passo 2 serve se il backup
+scelto è più vecchio di quanto credevi — senza, quello che stava in mezzo è
+perso.
+
+Se ripristini un backup **precedente a una modifica dello schema**, dopo la
+copia serve allineare le migrazioni:
+
+```bash
+sqlite3 data/backup/<file>.db "select version_num from alembic_version"
+docker compose exec app alembic upgrade head
+```
+
+Il caso opposto non si risolve: un backup più recente del codice non si può
+declassare. Se torni a una versione precedente dell'app, torna anche a un
+backup di quel periodo.
+
+> Un ripristino mai provato è un'ipotesi. Vale la pena fare la prova una
+> volta su una copia della cartella `data/`, con un compose su un'altra
+> porta, così la prima volta che serve davvero non è anche la prima volta che
+> lo fai.
+
+La cartella viene creata automaticamente al primo avvio se non esiste già.
+
 ## Avvio in locale (sviluppo, senza Docker)
 
 Richiede Python 3.12+.
@@ -195,6 +254,7 @@ Tutta la configurazione passa da variabili d'ambiente (vedi
 | `DATABASE_URL` | Percorso del database SQLite. |
 | `TELEGRAM_BOT_TOKEN` / `TELEGRAM_CHAT_ID` | Credenziali del bot Telegram per le notifiche. `TELEGRAM_CHAT_ID` accetta anche `CHAT_ID:TOPIC_ID` per un topic di un supergruppo. |
 | `NOTIFICATION_CHECK_INTERVAL_MINUTES` | Ogni quanto lo scheduler controlla le scadenze in avvicinamento. |
+| `BACKUP_ENABLED` / `BACKUP_DIR` / `BACKUP_HOUR` / `BACKUP_KEEP` | Backup notturno del database: se attivo, dove scrive, a che ora, quante copie tenere (vedi [Backup e ripristino](#backup-e-ripristino)). |
 | `TZ` | Timezone usata da scheduler e visualizzazione date (`Europe/Rome`). |
 | `FIRST_ADMIN_USERNAME` / `FIRST_ADMIN_PASSWORD` | Credenziali del primo utente admin, create solo se il database utenti è vuoto. |
 
@@ -213,7 +273,7 @@ python -m pytest -q
 app/
   models/       modelli SQLAlchemy (Cliente, Servizio, Utente, ...)
   routes/       endpoint FastAPI, raggruppati per area
-  services/     logica di business (calcolo occorrenze, riepilogo, notifiche, PDF)
+  services/     logica di business (calcolo occorrenze, riepilogo, notifiche, PDF, backup)
   templates/    template Jinja2 (server-side, HTMX)
   static/       CSS e JS statici
 alembic/        migrazioni del database

@@ -50,5 +50,18 @@ class Settings:
 
     TZ: str = os.environ.get("TZ", "Europe/Rome")
 
+    # Nightly database backup (see app/services/backup.py). The directory sits
+    # inside the mounted data volume by default, so backups travel with the
+    # database; copying them off-site is left to the host (rsync, cloud client),
+    # deliberately outside this app.
+    BACKUP_ENABLED: bool = _get_bool("BACKUP_ENABLED", True)
+    BACKUP_DIR: str = os.environ.get("BACKUP_DIR", "./data/backup")
+    # Hour of day (0-23, in TZ) the backup job runs.
+    BACKUP_HOUR: int = int(os.environ.get("BACKUP_HOUR", "3"))
+    # How many daily copies to keep. The limit is not disk space (the database
+    # is tiny) but how far back you can go on noticing a mistake late — and a
+    # billing mistake typically surfaces at month end.
+    BACKUP_KEEP: int = int(os.environ.get("BACKUP_KEEP", "30"))
+
 
 settings = Settings()
