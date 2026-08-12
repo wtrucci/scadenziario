@@ -275,9 +275,15 @@ le scelte tecniche quando non sono banali.
   l'interfaccia dichiara una versione che non esiste. Un test in
   `tests/test_versione.py` verifica che i punti restino allineati fra loro.
 - Su GitHub **tag e release sono due cose diverse**: il push del tag fa partire
-  il workflow Docker ma NON crea la release, che va creata a parte
-  (`gh release create`). Dalla 0.8.1 in poi si crea sempre; le versioni
-  precedenti alla 0.8.1 restano volutamente senza release.
+  il workflow Docker ma non basta a creare la release. Dalla 0.8.2 se ne occupa
+  il job `release` in `.github/workflows/docker-publish.yml`, che gira dopo la
+  pubblicazione dell'immagine e usa il **messaggio del tag annotato** come note.
+  Quindi: tag annotato sempre, prima riga = titolo. Le versioni precedenti alla
+  0.8.1 restano volutamente senza release.
+- Il testo del tag finisce nelle note passando da un **file** e da variabili
+  d'ambiente, mai interpolato nel comando shell: è testo arbitrario, e
+  incollarlo in un comando è il modo in cui virgolette e backtick diventano
+  codice eseguito.
 
 ## Convenzioni di progetto
 

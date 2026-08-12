@@ -164,6 +164,35 @@ docker pull ghcr.io/wtrucci/scadenziario:0.1.0
 > Change visibility), altrimenti richiede autenticazione anche solo per il
 > download.
 
+## Dietro un reverse proxy (Traefik, nginx, Caddy)
+
+Se pubblichi l'app in HTTPS tramite un proxy, aggiungi `FORWARDED_ALLOW_IPS`
+al `.env`:
+
+```bash
+FORWARDED_ALLOW_IPS=*
+SESSION_HTTPS_ONLY=true
+```
+
+Senza la prima riga l'interfaccia si vede **completamente senza stili**. Il
+motivo: il proxy termina il TLS e raggiunge l'app in chiaro, quindi l'app
+crede di essere su `http` e genera link `http://…/static/css/style.css`
+dentro una pagina servita in `https`. Il browser li blocca come *mixed
+content* e scarta il CSS. L'HTML arriva, il foglio di stile no.
+
+`FORWARDED_ALLOW_IPS` dice a uvicorn di fidarsi dell'intestazione
+`X-Forwarded-Proto` inviata dal proxy. Da solo `--proxy-headers` non basta:
+uvicorn si fida di `127.0.0.1` soltanto, e un proxy in rete Docker arriva da
+`172.x`, quindi le intestazioni verrebbero ignorate.
+
+`*` significa "fidati di chi si connette", corretto quando **solo** il proxy
+può raggiungere il container — la configurazione Docker abituale. Se invece
+esponi la porta 8000 anche a client non fidati, metti lì l'indirizzo del
+proxy, altrimenti chiunque può falsificare quelle intestazioni.
+
+`SESSION_HTTPS_ONLY=true` fa inviare il cookie di sessione solo su HTTPS: ha
+senso attivarlo appena il sito è servito in TLS.
+
 ## Backup e ripristino
 
 L'app fa da sé una copia del database ogni notte alle 03:00 (configurabile,
@@ -256,6 +285,7 @@ Tutta la configurazione passa da variabili d'ambiente (vedi
 | `NOTIFICATION_CHECK_INTERVAL_MINUTES` | Ogni quanto lo scheduler controlla le scadenze in avvicinamento. |
 | `BACKUP_ENABLED` / `BACKUP_DIR` / `BACKUP_HOUR` / `BACKUP_KEEP` | Backup notturno del database: se attivo, dove scrive, a che ora, quante copie tenere (vedi [Backup e ripristino](#backup-e-ripristino)). |
 | `TZ` | Timezone usata da scheduler e visualizzazione date (`Europe/Rome`). |
+| `FORWARDED_ALLOW_IPS` / `SESSION_HTTPS_ONLY` | Da impostare quando l'app sta dietro un reverse proxy in HTTPS (vedi [Dietro un reverse proxy](#dietro-un-reverse-proxy-traefik-nginx-caddy)). |
 | `FIRST_ADMIN_USERNAME` / `FIRST_ADMIN_PASSWORD` | Credenziali del primo utente admin, create solo se il database utenti è vuoto. |
 
 Il file `.env` non va mai versionato (è già in `.gitignore`).
