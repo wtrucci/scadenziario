@@ -73,31 +73,38 @@ jobs:
       contents: write
 
     steps:
-      - name: Checkout
-        # Full history: the annotated tag's message is the release body, and a
-        # shallow clone would not carry it.
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      # The tag message becomes the release notes, so it is written to a file and
-      # passed by env/--notes-file rather than interpolated into the shell: a tag
-      # message is arbitrary text, and pasting it into a command is how quotes and
-      # backticks turn into executed code.
+      # No checkout on purpose. actions/checkout materialises the tag as a
+      # LIGHTWEIGHT one, so `git tag --format='%(contents:subject)'` silently
+      # returns the COMMIT message instead of the tag's — which is exactly how
+      # v0.8.2 ended up with the commit text as its release notes. The API
+      # always has the real annotation, so it is read from there.
+      #
+      # The message is written to a file and passed with --notes-file rather
+      # than interpolated into the command: a tag message is arbitrary text, and
+      # pasting it into a shell is how quotes and backticks become executed code.
       - name: Build release notes from the annotated tag
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -eu
           TAG="$GITHUB_REF_NAME"
-          # First line of the tag message is the subject, the rest the body.
-          SOGGETTO=$(git tag -l --format='%(contents:subject)' "$TAG")
-          git tag -l --format='%(contents:body)' "$TAG" > note.md
+          RIF=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$TAG")
+          TIPO=$(printf '%s' "$RIF" | jq -r '.object.type')
+          if [ "$TIPO" = "tag" ]; then
+            SHA=$(printf '%s' "$RIF" | jq -r '.object.sha')
+            gh api "repos/$GITHUB_REPOSITORY/git/tags/$SHA" --jq '.message' > messaggio.txt
+          else
+            # Lightweight tag: there is no message to quote. The generated
+            # changelog below still gives the release a body.
+            : > messaggio.txt
+          fi
+          SOGGETTO=$(head -n 1 messaggio.txt)
           if [ -n "$SOGGETTO" ]; then
             echo "RELEASE_TITLE=$TAG — $SOGGETTO" >> "$GITHUB_ENV"
           else
-            # On a lightweight tag git falls back to the commit subject, so this
-            # only catches the case where even that is empty.
             echo "RELEASE_TITLE=$TAG" >> "$GITHUB_ENV"
           fi
+          tail -n +2 messaggio.txt > note.md
           {
             echo
             echo '## Immagine Docker'
@@ -113,6 +120,7 @@ jobs:
         run: |
           set -eu
           gh release create "$GITHUB_REF_NAME" \
+            --repo "$GITHUB_REPOSITORY" \
             --title "$RELEASE_TITLE" \
             --notes-file note.md \
             --generate-notes
