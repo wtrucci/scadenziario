@@ -16,14 +16,38 @@ from app.services.riepilogo import GruppoCliente
 
 # Column widths (mm) for the occurrence table, summing to the usable page
 # width (A4 minus the default 10mm margins on each side = 190mm).
+# Referente gets the widest text column: on a reseller's summary the customer
+# is the same on every row and the referente is what tells the rows apart
+# ("Boccardo Amministrazioni", "Studio Legale Palermiti"), so it is the column
+# that must not be cramped.
+# "R" marks the columns that read as numbers and are right-aligned.
 _COLONNE = [
-    ("Descrizione", 60),
-    ("Scadenza", 25),
-    ("Referente", 35),
-    ("Qtà", 15),
-    ("Importo unit.", 25),
-    ("Totale", 30),
+    ("Descrizione", 44, "L"),
+    ("Scadenza", 24, "L"),
+    ("Referente", 52, "L"),
+    ("Qtà", 12, "R"),
+    ("Importo unit.", 28, "R"),
+    ("Totale", 30, "R"),
 ]
+
+# Breathing room (mm) left inside a cell so text never touches the borders.
+_PADDING = 2
+
+
+def _tronca(pdf: FPDF, testo: str, larghezza: float) -> str:
+    """Shorten ``testo`` with an ellipsis until it fits ``larghezza``.
+
+    fpdf2 does not clip: an over-long value simply runs on over the next
+    column, which is how a long referente ended up sitting on top of the
+    quantity. Measuring with the current font is the only reliable way to fit
+    it, since character count says nothing about rendered width.
+    """
+    utile = larghezza - _PADDING
+    if pdf.get_string_width(testo) <= utile:
+        return testo
+    while testo and pdf.get_string_width(testo + "...") > utile:
+        testo = testo[:-1]
+    return testo + "..."
 
 
 def genera_pdf_cliente(gruppo: GruppoCliente, etichetta_mese: str) -> bytes:
@@ -45,12 +69,23 @@ def genera_pdf_cliente(gruppo: GruppoCliente, etichetta_mese: str) -> bytes:
 
     pdf.set_font("Helvetica", "B", 9)
     pdf.set_fill_color(230, 230, 230)
-    for intestazione, larghezza in _COLONNE:
-        pdf.cell(larghezza, 8, intestazione, border=1, fill=True)
+    for intestazione, larghezza, allineamento in _COLONNE:
+        pdf.cell(larghezza, 8, intestazione, border=1, fill=True, align=allineamento)
     pdf.ln()
 
+    # Alphabetical by referente: the customer reading this recognises their own
+    # sites by name, not by the order the occurrences happened to fall in.
+    # Rows without a referente come last, then by date so a referente billed
+    # twice in the month stays in chronological order.
+    righe = sorted(
+        gruppo.righe,
+        key=lambda r: ((r.servizio.referente or "").lower() == "",
+                       (r.servizio.referente or "").lower(),
+                       r.occorrenza.data_occorrenza),
+    )
+
     pdf.set_font("Helvetica", "", 9)
-    for riga in gruppo.righe:
+    for riga in righe:
         s = riga.servizio
         occ = riga.occorrenza
         valori = [
@@ -61,13 +96,14 @@ def genera_pdf_cliente(gruppo: GruppoCliente, etichetta_mese: str) -> bytes:
             f"{occ.importo:.2f} {s.valuta}",
             f"{occ.totale:.2f} {s.valuta}",
         ]
-        for valore, (_, larghezza) in zip(valori, _COLONNE):
-            pdf.cell(larghezza, 7, valore, border=1)
+        for valore, (_, larghezza, allineamento) in zip(valori, _COLONNE):
+            pdf.cell(larghezza, 7, _tronca(pdf, valore, larghezza),
+                     border=1, align=allineamento)
         pdf.ln()
 
     pdf.set_font("Helvetica", "B", 10)
-    larghezza_label = sum(l for _, l in _COLONNE[:-1])
-    pdf.cell(larghezza_label, 8, "Subtotale", border=1)
-    pdf.cell(_COLONNE[-1][1], 8, f"{gruppo.subtotale:.2f}", border=1)
+    larghezza_label = sum(l for _, l, _a in _COLONNE[:-1])
+    pdf.cell(larghezza_label, 8, "Subtotale", border=1, align="R")
+    pdf.cell(_COLONNE[-1][1], 8, f"{gruppo.subtotale:.2f}", border=1, align="R")
 
     return bytes(pdf.output())

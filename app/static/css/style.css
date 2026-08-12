@@ -104,11 +104,20 @@ a:hover { color: var(--primary-hover); }
 
 /* ------------------------------------------------------------------ Sidebar */
 
+/* The brand has always linked to the dashboard, but styled as plain text it
+   did not read as clickable — hence the hover state and the pointer. */
 .brand {
     font-weight: 700;
     font-size: 1.05rem;
     color: var(--text);
     text-decoration: none;
+    cursor: pointer;
+}
+.brand:hover { color: var(--primary); }
+.brand:focus-visible {
+    outline: 2px solid var(--primary);
+    outline-offset: 3px;
+    border-radius: 3px;
 }
 
 .nav-user { color: var(--muted); }
@@ -796,6 +805,12 @@ tr.row-fatturato:hover { background: var(--row-fatturato-hover-bg) !important; }
     justify-content: space-between;
     gap: 1rem;
     margin-bottom: 1rem;
+}
+
+.month-nav-mid {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
 }
 
 .month-nav-current {

@@ -58,11 +58,19 @@ def _navigazione_mese(primo: date) -> dict:
     labels for the previous and next months."""
     prec = periodi.mese_precedente(primo)
     succ = periodi.mese_successivo(primo)
+    oggi = date.today()
+    corrente = date(oggi.year, oggi.month, 1)
     return {
         "etichetta": periodi.etichetta_mese(primo),
         "chiave": periodi.chiave_mese(primo),
         "prec": {"chiave": periodi.chiave_mese(prec), "etichetta": periodi.etichetta_mese(prec)},
         "succ": {"chiave": periodi.chiave_mese(succ), "etichetta": periodi.etichetta_mese(succ)},
+        # Wandering a few months ahead is normal; walking back one month at a
+        # time is not. "e_corrente" lets the selector hide the shortcut when it
+        # would do nothing.
+        "corrente": {"chiave": periodi.chiave_mese(corrente),
+                     "etichetta": periodi.etichetta_mese(corrente)},
+        "e_corrente": primo == corrente,
     }
 
 

@@ -4,6 +4,15 @@
    month navigation. #}
 <div class="month-nav">
     <a class="btn btn-secondary" href="{{ base_url }}?mese={{ nav.prec.chiave }}{{ filtri_qs|default('') }}">← {{ nav.prec.etichetta }}</a>
-    <span class="month-nav-current">{{ nav.etichetta }}</span>
+    {# Label and "current month" travel together in the middle so the prev/next
+       buttons keep their places at the edges whether or not the shortcut shows. #}
+    <span class="month-nav-mid">
+        <span class="month-nav-current">{{ nav.etichetta }}</span>
+        {% if not nav.e_corrente %}
+        <a class="btn btn-secondary btn-small"
+           href="{{ base_url }}?mese={{ nav.corrente.chiave }}{{ filtri_qs|default('') }}"
+           title="Torna a {{ nav.corrente.etichetta }}">Mese corrente</a>
+        {% endif %}
+    </span>
     <a class="btn btn-secondary" href="{{ base_url }}?mese={{ nav.succ.chiave }}{{ filtri_qs|default('') }}">{{ nav.succ.etichetta }} →</a>
 </div>
