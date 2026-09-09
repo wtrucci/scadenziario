@@ -293,6 +293,10 @@ a:hover { color: var(--primary-hover); }
 
 .icon-btn:hover { background: var(--bg); color: var(--text); }
 
+/* The same button shape used as a link (the row-edit pencil in the
+   dashboard): drop the underline links get by default. */
+a.icon-btn { text-decoration: none; }
+
 .icon-btn-badge {
     position: absolute;
     top: -3px;

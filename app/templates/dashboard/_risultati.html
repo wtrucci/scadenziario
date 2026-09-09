@@ -6,6 +6,9 @@
    stati_servizi (servizio.id -> computed contract state), etichette_stato
    (state -> label). #}
 {% set filtri_attivi = filtri.cliente or filtri.referente or filtri.stato %}
+{# The dashboard exactly as it is being shown, handed to the edit form so it
+   can bring the user back to this month with these filters. #}
+{% set ritorno_dashboard = "/?mese=" ~ nav.chiave ~ filtri_qs %}
 {# Out-of-band swaps: the filter badge and "Azzera filtri" button live in the
    page header, outside this HTMX target, but must still reflect the filters
    that were just applied — otherwise they'd only update on a full reload. #}
@@ -49,8 +52,12 @@
             <th class="col-num">Importo unit.</th>
             <th class="col-num">Totale</th>
             <th class="sortable">Stato servizio</th>
-            <th class="sortable col-actions-header">
-                <span class="th-label">Fatturazione</span>
+            <th class="sortable"><span class="th-label">Fatturazione</span></th>
+            {# The actions column is appended LAST on purpose: the saved
+               "hidden columns" preference is stored by column index, so adding
+               a column anywhere else would shift what users had hidden. #}
+            <th class="col-actions-header">
+                Azioni
                 {% include "partials/_col_toggle_btn.html" %}
             </th>
         </tr>
@@ -86,6 +93,16 @@
                 {% with servizio_id = s.id, data_occorrenza = occ.data_occorrenza, fatturato = occ.fatturato %}
                 {% include "servizi/_toggle_fatturato.html" %}
                 {% endwith %}
+            </td>
+            {# Edit the contract without leaving the month you were looking at:
+               "ritorno" brings you back here, filters included. No delete here
+               — from a single occurrence it is far too easy to wipe out a whole
+               contract by mistake; that lives in the services list. #}
+            <td class="col-actions">
+                <a class="icon-btn" title="Modifica il servizio" aria-label="Modifica il servizio"
+                   href="/servizi/{{ s.id }}/modifica?ritorno={{ ritorno_dashboard|urlencode }}">
+                    <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4z"/></svg>
+                </a>
             </td>
         </tr>
         {% endfor %}

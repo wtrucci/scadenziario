@@ -128,6 +128,22 @@ def _fattura_occorrenze_passate(db: Session, servizio: Servizio, oggi: date) -> 
             _imposta_fatturato(db, servizio, occ.data_occorrenza, occ, fatturato=True)
 
 
+def _destinazione(ritorno: str) -> str:
+    """Where to send the user after saving (or cancelling) the form.
+
+    The edit form can be opened from the dashboard, which wants the user back on
+    the month and filters they came from; opened from anywhere else it falls
+    back to the services list. The value travels in the URL, so it is only
+    accepted when it is a path INSIDE this application: anything else (an
+    absolute URL, a protocol-relative "//evil.example" or a backslash, which
+    some browsers normalise to "/") would turn the redirect into an open
+    redirect towards a site we do not control.
+    """
+    if ritorno.startswith("/") and not ritorno.startswith(("//", "/\\")):
+        return ritorno
+    return "/servizi"
+
+
 def _clienti_attivi(db: Session) -> list[Cliente]:
     return db.scalars(select(Cliente).where(Cliente.attivo.is_(True)).order_by(Cliente.nome)).all()
 
@@ -477,6 +493,7 @@ def crea_servizio(
 def modifica_form(
     request: Request,
     servizio_id: int,
+    ritorno: str = "",
     db: Session = Depends(get_db),
     user: Utente = Depends(require_login),
 ):
@@ -502,6 +519,7 @@ def modifica_form(
             # "when does this expire?".
             "prossima_scadenza": prossima_scadenza(s, date.today()),
             "errori": [],
+            "ritorno": _destinazione(ritorno),
             **choices,
         },
     )
@@ -528,10 +546,12 @@ def aggiorna_servizio(
     numero_seriale: str = Form(""),
     luogo_installazione: str = Form(""),
     note: str = Form(""),
+    ritorno: str = Form(""),  # page to go back to (see _destinazione)
     db: Session = Depends(get_db),
     user: Utente = Depends(require_login),
 ):
     s = _get_or_404(db, servizio_id)
+    destinazione = _destinazione(ritorno)
     is_rinnovo = rinnovo_automatico is not None
     is_disdetto = disdetto is not None
 
@@ -571,6 +591,7 @@ def aggiorna_servizio(
              "servizio": s, "valori": valori, "errori": errori,
              "etichetta_stato_attuale": ETICHETTE_STATO_CONTRATTO[stato_contratto(s)],
              "prossima_scadenza": prossima_scadenza(s, date.today()),
+             "ritorno": destinazione,
              **choices},
             status_code=422,
         )
@@ -585,7 +606,7 @@ def aggiorna_servizio(
     s.rinnovo_automatico = is_rinnovo
     s.disdetto = is_disdetto
     db.commit()
-    return RedirectResponse(url="/servizi", status_code=303)
+    return RedirectResponse(url=destinazione, status_code=303)
 
 
 @router.delete("/{servizio_id}")

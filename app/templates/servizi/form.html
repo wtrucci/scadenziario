@@ -204,9 +204,15 @@
         <textarea id="note" name="note" rows="3">{{ valori.note }}</textarea>
     </div>
 
+    {# Where to go after saving or cancelling: the dashboard passes the month
+       and filters it was showing, so editing a row does not lose the context.
+       The server validates it (see _destinazione in routes/servizi.py). #}
+    {% set torna_a = ritorno|default('/servizi', true) %}
+    <input type="hidden" name="ritorno" value="{{ torna_a }}">
+
     <div class="form-actions">
         <button type="submit" class="btn">Salva</button>
-        <a href="/servizi" class="btn btn-secondary">Annulla</a>
+        <a href="{{ torna_a }}" class="btn btn-secondary">Annulla</a>
     </div>
 </form>
 
