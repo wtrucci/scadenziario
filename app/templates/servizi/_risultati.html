@@ -2,11 +2,15 @@
    page. Context: righe (list of (Servizio, cadenza label, next due date,
    computed contract state)), filtri, etichette_stato (state -> label). #}
 {% set filtri_attivi = filtri.cliente or filtri.referente or filtri.stato or filtri.q %}
-{# Out-of-band swaps: the filter badge and "Azzera filtri" button live in the
-   page header, outside this HTMX target, but must still reflect the filters
-   that were just applied — otherwise they'd only update on a full reload. #}
+{# Out-of-band swaps only make sense in an HTMX response: on a full page load
+   this partial is included INSIDE the page, which already renders these
+   elements in the header — rendering them here too would show them twice
+   (two "Azzera filtri" buttons). `request` is available in every template
+   context, so the partial can tell the two cases apart on its own. #}
+{% if request.headers.get('HX-Request') %}
 <span id="filtri-badge" hx-swap-oob="true">{% if filtri_attivi %}<span class="icon-btn-badge"></span>{% endif %}</span>
 <span id="filtri-reset" hx-swap-oob="true">{% if filtri_attivi %}<a class="btn btn-secondary" href="/servizi">Azzera filtri</a>{% endif %}</span>
+{% endif %}
 
 {% if righe %}
 <table class="table-servizi" data-table-id="servizi">

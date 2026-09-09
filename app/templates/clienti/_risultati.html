@@ -1,8 +1,13 @@
 {# Results region swapped by HTMX as you type in the search box; also included
    by the full page. Context: clienti (list), filtri (current search). #}
-{# Out-of-band swap: "Azzera ricerca" lives in the page header, outside this
-   HTMX target, so it must be refreshed alongside the results. #}
+{# Out-of-band swaps only make sense in an HTMX response: on a full page load
+   this partial is included INSIDE the page, which already renders these
+   elements in the header — rendering them here too would show them twice
+   (two "Azzera filtri" buttons). `request` is available in every template
+   context, so the partial can tell the two cases apart on its own. #}
+{% if request.headers.get('HX-Request') %}
 <span id="ricerca-reset" hx-swap-oob="true">{% if filtri.q %}<a class="btn btn-secondary" href="/clienti">Azzera ricerca</a>{% endif %}</span>
+{% endif %}
 
 {% if clienti %}
 <table data-table-id="clienti">

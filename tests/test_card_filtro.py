@@ -122,3 +122,78 @@ class TestCardFiltro(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestNessunDoppioAzzera(unittest.TestCase):
+    """A full page load with a filter active must show ONE "Azzera filtri".
+
+    The results partial carries hx-swap-oob elements meant for HTMX responses;
+    included in a full page they would be rendered a second time, right below
+    the ones already in the header. Clicking a summary card is a full page
+    load, so this is the common path, not a corner case.
+    """
+
+    def setUp(self):
+        from fastapi.testclient import TestClient
+
+        from app.database import get_db
+        from app.dependencies import require_login
+        from app.main import app
+
+        self.engine = create_engine(
+            "sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool
+        )
+        Base.metadata.create_all(self.engine)
+        self.SessionLocal = sessionmaker(bind=self.engine)
+
+        db = self.SessionLocal()
+        cliente = Cliente(nome="Alfa", attivo=True)
+        db.add(cliente)
+        db.flush()
+        db.add(Servizio(
+            cliente_id=cliente.id, descrizione="Licenza", tipo=TipoServizio.licenza,
+            data_scadenza=OGGI, cadenza_mesi=12, importo=Decimal("100"), quantita=1,
+            valuta="EUR", preavviso_giorni=30, rinnovo_automatico=True,
+        ))
+        db.commit()
+        db.close()
+
+        def override_get_db():
+            db = self.SessionLocal()
+            try:
+                yield db
+            finally:
+                db.close()
+
+        self.app = app
+        app.dependency_overrides[get_db] = override_get_db
+        app.dependency_overrides[require_login] = lambda: SimpleNamespace(username="tester")
+        self.client = TestClient(app)
+
+    def tearDown(self):
+        self.app.dependency_overrides.clear()
+        self.engine.dispose()
+
+    def test_dashboard_filtrata_ha_un_solo_azzera(self):
+        h = self.client.get("/", params={"mese": MESE, "stato": "da_fatturare"}).text
+        self.assertEqual(h.count("Azzera filtri"), 1)
+        self.assertEqual(h.count('id="filtri-reset"'), 1)
+        self.assertEqual(h.count('id="filtri-badge"'), 1)
+
+    def test_servizi_filtrati_hanno_un_solo_azzera(self):
+        h = self.client.get("/servizi", params={"q": "licenza"}).text
+        self.assertEqual(h.count("Azzera filtri"), 1)
+
+    def test_clienti_cercati_hanno_un_solo_azzera(self):
+        h = self.client.get("/clienti", params={"q": "alfa"}).text
+        self.assertEqual(h.count("Azzera ricerca"), 1)
+
+    def test_la_risposta_htmx_porta_ancora_lo_swap(self):
+        # The header lives outside the swapped region, so the HTMX response
+        # must still carry it — otherwise the button would never appear.
+        h = self.client.get(
+            "/", params={"mese": MESE, "stato": "da_fatturare"},
+            headers={"HX-Request": "true"},
+        ).text
+        self.assertIn('hx-swap-oob="true"', h)
+        self.assertIn("Azzera filtri", h)

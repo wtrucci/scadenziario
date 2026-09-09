@@ -9,11 +9,15 @@
 {# The dashboard exactly as it is being shown, handed to the edit form so it
    can bring the user back to this month with these filters. #}
 {% set ritorno_dashboard = "/?mese=" ~ nav.chiave ~ filtri_qs %}
-{# Out-of-band swaps: the filter badge and "Azzera filtri" button live in the
-   page header, outside this HTMX target, but must still reflect the filters
-   that were just applied — otherwise they'd only update on a full reload. #}
+{# Out-of-band swaps only make sense in an HTMX response: on a full page load
+   this partial is included INSIDE the page, which already renders these
+   elements in the header — rendering them here too would show them twice
+   (two "Azzera filtri" buttons). `request` is available in every template
+   context, so the partial can tell the two cases apart on its own. #}
+{% if request.headers.get('HX-Request') %}
 <span id="filtri-badge" hx-swap-oob="true">{% if filtri_attivi %}<span class="icon-btn-badge"></span>{% endif %}</span>
 <span id="filtri-reset" hx-swap-oob="true">{% if filtri_attivi %}<a class="btn btn-secondary" href="/?mese={{ nav.chiave }}">Azzera filtri</a>{% endif %}</span>
+{% endif %}
 
 {% with base_url = "/" %}
 {% include "partials/_navigazione_mese.html" %}
