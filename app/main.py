@@ -64,6 +64,30 @@ app.add_middleware(
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
 
+@app.middleware("http")
+async def no_store_sulle_pagine(request: Request, call_next):
+    """Tell the browser never to reuse a stored copy of a page.
+
+    Every page here is a live view of the database: the same URL shows
+    something different the moment an occurrence is billed. Without this
+    header the browser is free to show a stored copy — most visibly with the
+    back button, which restores the page from memory (bfcache) without asking
+    the server at all. Billing from the dashboard and then going back to the
+    riepilogo showed the row still listed, even though the server no longer
+    returns it.
+
+    Only HTML is covered: /static keeps its normal caching, since CSS and
+    icons are exactly what a browser SHOULD reuse.
+
+    It is also the right default for an application behind a login: pages full
+    of customer data have no business sitting in a shared browser cache.
+    """
+    response = await call_next(request)
+    if response.headers.get("content-type", "").startswith("text/html"):
+        response.headers["Cache-Control"] = "no-store, must-revalidate"
+    return response
+
+
 @app.exception_handler(NotAuthenticatedError)
 async def not_authenticated_handler(request: Request, exc: NotAuthenticatedError):
     """Send unauthenticated users to the login page.
