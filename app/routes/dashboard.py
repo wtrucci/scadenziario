@@ -140,10 +140,23 @@ def _contesto_risultati(
         riga.servizio.id: stato_contratto(riga.servizio, oggi=oggi) for riga in righe
     }
 
+    # Where each summary card points. A card is the count of exactly one
+    # filter, so clicking it applies that filter; clicking the one already
+    # active clears it, which is the only way back that does not require
+    # hunting for the funnel icon. cliente/referente are carried along, so the
+    # cards narrow the current view instead of resetting it.
+    link_stati = {
+        st: "/?mese=" + periodi.chiave_mese(primo) + _filtri_querystring(
+            cliente_id, referente_val, None if st == stato_val else st
+        )
+        for st in STATI_OCCORRENZA_FILTRABILI
+    }
+
     return {
         "nav": _navigazione_mese(primo),
         "righe": righe,
         "conteggi": conteggi,
+        "link_stati": link_stati,
         "totale_da_fatturare": totale_da_fatturare,
         "stati_servizi": stati_servizi,
         "etichette_stato": ETICHETTE_STATO_CONTRATTO,

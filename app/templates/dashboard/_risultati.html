@@ -19,19 +19,32 @@
 {% include "partials/_navigazione_mese.html" %}
 {% endwith %}
 
+{# Each card IS the count of one filter, so clicking it applies that filter
+   and clicking the active one clears it (the link already points back to the
+   unfiltered month — see link_stati). aria-pressed tells a screen reader
+   which one is on; the title says what the click will do, because a card that
+   filters must not look like a card that only counts. #}
 <div class="summary-cards">
-    <div class="summary-card summary-card-alert">
+    <a class="summary-card summary-card-alert{% if filtri.stato == 'da_fatturare' %} summary-card-attiva{% endif %}"
+       href="{{ link_stati.da_fatturare }}" aria-pressed="{{ 'true' if filtri.stato == 'da_fatturare' else 'false' }}"
+       title="{% if filtri.stato == 'da_fatturare' %}Mostra tutte le occorrenze del mese{% else %}Mostra solo le occorrenze da fatturare{% endif %}">
         <span class="summary-value">{{ conteggi.da_fatturare }}</span>
         <span class="summary-label">Da fatturare</span>
-    </div>
-    <div class="summary-card summary-card-warn">
+    </a>
+    <a class="summary-card summary-card-warn{% if filtri.stato == 'in_scadenza' %} summary-card-attiva{% endif %}"
+       href="{{ link_stati.in_scadenza }}" aria-pressed="{{ 'true' if filtri.stato == 'in_scadenza' else 'false' }}"
+       title="{% if filtri.stato == 'in_scadenza' %}Mostra tutte le occorrenze del mese{% else %}Mostra solo le occorrenze in scadenza{% endif %}">
         <span class="summary-value">{{ conteggi.in_scadenza }}</span>
         <span class="summary-label">In scadenza</span>
-    </div>
-    <div class="summary-card summary-card-ok">
+    </a>
+    <a class="summary-card summary-card-ok{% if filtri.stato == 'fatturato' %} summary-card-attiva{% endif %}"
+       href="{{ link_stati.fatturato }}" aria-pressed="{{ 'true' if filtri.stato == 'fatturato' else 'false' }}"
+       title="{% if filtri.stato == 'fatturato' %}Mostra tutte le occorrenze del mese{% else %}Mostra solo le occorrenze già fatturate{% endif %}">
         <span class="summary-value">{{ conteggi.fatturato }}</span>
         <span class="summary-label">Fatturato</span>
-    </div>
+    </a>
+    {# Not a link: it is an amount, not a state, so there is no list of
+       "totals" to filter down to. #}
     <div class="summary-card">
         <span class="summary-value">{{ "%.2f"|format(totale_da_fatturare) }}</span>
         <span class="summary-label">Totale da fatturare</span>

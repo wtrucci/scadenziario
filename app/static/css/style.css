@@ -937,6 +937,31 @@ tr.row-fatturato:hover { background: var(--row-fatturato-hover-bg) !important; }
 .summary-card-warn  { border-left-color: var(--badge-warn-text); }
 .summary-card-ok    { border-left-color: var(--ok-text); }
 
+/* The three state cards are links that filter the table below. They must not
+   look like links (no underline, no link colour: they are still numbers to
+   read at a glance) but must answer to the pointer, or nobody discovers they
+   can be clicked. */
+a.summary-card {
+    color: inherit;
+    text-decoration: none;
+    cursor: pointer;
+    transition: border-color 0.1s, background 0.1s;
+}
+
+a.summary-card:hover { background: var(--bg); }
+
+a.summary-card:focus-visible {
+    outline: 2px solid var(--primary);
+    outline-offset: 2px;
+}
+
+/* The card whose filter is on: the ring says "this is why the table is
+   short", so a filtered dashboard is never mistaken for an empty month. */
+.summary-card-attiva {
+    box-shadow: inset 0 0 0 2px var(--primary);
+    background: var(--bg);
+}
+
 /* One block per customer in the billing summary */
 .cliente-group {
     margin-bottom: 2rem;
