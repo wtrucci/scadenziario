@@ -29,6 +29,7 @@ from app.routes.dashboard import _contesto_riepilogo, _contesto_risultati
 from app.services import filtri, periodi, riepilogo
 from app.services.filtri import condizioni_ricerca
 from app.services.servizi import trova_servizi_simili
+from app.services.storico import storico_servizio
 from app.services.occorrenze import (
     ETICHETTE_STATO_CONTRATTO,
     STATI_CONTRATTO,
@@ -506,6 +507,36 @@ def crea_servizio(
     _fattura_occorrenze_passate(db, nuovo, date.today())
     db.commit()
     return RedirectResponse(url="/servizi", status_code=303)
+
+
+@router.get("/{servizio_id}/storico")
+def storico(
+    request: Request,
+    servizio_id: int,
+    db: Session = Depends(get_db),
+    user: Utente = Depends(require_login),
+):
+    """One service's whole timeline (see services/storico.py).
+
+    Read-only: marking an occurrence billed stays where the month's work
+    happens — the dashboard and the riepilogo — so this page cannot change
+    what it is there to report.
+    """
+    s = _get_or_404(db, servizio_id)
+    oggi = date.today()
+    return templates.TemplateResponse(
+        request,
+        "servizi/storico.html",
+        {
+            "user": user,
+            "servizio": s,
+            "voci": storico_servizio(db, s, oggi=oggi),
+            "cadenza": etichetta_cadenza(s.cadenza_mesi),
+            "stato_s": stato_contratto(s, oggi=oggi),
+            "etichette_stato": ETICHETTE_STATO_CONTRATTO,
+            "prossima": prossima_scadenza(s, oggi),
+        },
+    )
 
 
 @router.get("/{servizio_id}/modifica")

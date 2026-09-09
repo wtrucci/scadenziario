@@ -27,6 +27,9 @@
     <td class="col-num" data-sort="{{ s.totale }}"><strong>{{ "%.2f"|format(s.totale) }} {{ s.valuta }}</strong></td>
     <td><span class="badge badge-stato-{{ stato_s }}">{{ etichette_stato[stato_s] }}</span></td>
     <td class="col-actions">
+        <a class="icon-btn" href="/servizi/{{ s.id }}/storico" title="Storico" aria-label="Storico">
+            <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 14"/></svg>
+        </a>
         {% with href = "/servizi/" ~ s.id ~ "/modifica" %}
         {% include "partials/_btn_modifica.html" %}
         {% endwith %}

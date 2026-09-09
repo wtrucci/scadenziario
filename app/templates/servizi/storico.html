@@ -1,0 +1,104 @@
+{% extends "base.html" %}
+
+{% block title %}Storico — {{ servizio.descrizione }} — Scadenziario{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>{{ servizio.descrizione }}</h1>
+    <div class="page-header-actions">
+        <a class="btn btn-secondary" href="/servizi/{{ servizio.id }}/modifica">Modifica</a>
+        <a class="btn btn-secondary" href="/servizi">Torna ai servizi</a>
+    </div>
+</div>
+
+{# The contract in one line: reading a timeline of dates without knowing the
+   cadence and the amount behind them means going back and forth to the form. #}
+<div class="summary-cards">
+    <div class="summary-card">
+        <span class="summary-value">{{ servizio.cliente.nome }}</span>
+        <span class="summary-label">Cliente{% if servizio.referente %} — referente {{ servizio.referente }}{% endif %}</span>
+    </div>
+    <div class="summary-card">
+        <span class="summary-value">{{ prossima.strftime('%d/%m/%Y') }}</span>
+        <span class="summary-label">Prossima scadenza{% if servizio.rinnovo_automatico %} (rinnovo automatico){% endif %}</span>
+    </div>
+    <div class="summary-card">
+        <span class="summary-value">{{ "%.2f"|format(servizio.importo) }} {{ servizio.valuta }}</span>
+        <span class="summary-label">Importo unitario × {{ servizio.quantita }} — {{ cadenza }}</span>
+    </div>
+    <div class="summary-card">
+        <span class="summary-value"><span class="badge badge-stato-{{ stato_s }}">{{ etichette_stato[stato_s] }}</span></span>
+        <span class="summary-label">Stato contratto</span>
+    </div>
+</div>
+
+{% if servizio.disdetto %}
+{# A cancelled contract generates nothing, by design: without saying so, every
+   line below would carry the "Storico" badge and look like a glitch. #}
+<div class="warn-box">
+    <p><strong>Contratto disdetto.</strong> Non genera più occorrenze: qui sotto
+       resta solo ciò che era già stato registrato.</p>
+</div>
+{% endif %}
+
+<table class="table-servizi" data-table-id="storico">
+    <thead>
+        <tr>
+            <th class="sortable">Data</th>
+            <th class="sortable">Tipo</th>
+            <th class="sortable col-num">Qtà</th>
+            <th class="sortable col-num">Importo unit.</th>
+            <th class="sortable col-num">Totale</th>
+            <th class="sortable">Stato</th>
+            <th class="sortable col-actions-header">
+                <span class="th-label">Note</span>
+                {% include "partials/_col_toggle_btn.html" %}
+            </th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for v in voci %}
+        {% set rowcls = {"da_fatturare": "row-da-fatturare", "in_scadenza": "row-in-scadenza", "fatturato": "row-fatturato"}.get(v.stato_visivo, "") %}
+        <tr class="{{ rowcls }}">
+            <td class="col-data" data-sort="{{ v.data.isoformat() }}">{{ v.data.strftime('%d/%m/%Y') }}</td>
+            <td>
+                {% if v.apre_ciclo %}
+                <span class="badge badge-tipo" title="Apre un ciclo: è un rinnovo">Rinnovo</span>
+                {% else %}
+                <span class="badge badge-tipo" title="Rata interna a un impegno già preso">Rata</span>
+                {% endif %}
+                {% if not v.generata %}
+                {# The engine no longer generates this date (the anchor moved
+                   past it), but its state row is the proof it was invoiced. #}
+                <span class="badge badge-warn" title="Data non generata dal contratto com'è oggi (l'ancora è avanzata, o il contratto è disdetto): resta come storico">Storico</span>
+                {% endif %}
+                {% if v.da_override %}
+                <span class="badge badge-tipo" title="Importo/quantità corretti a mano per questa occorrenza">Override</span>
+                {% endif %}
+            </td>
+            <td class="col-num">{{ v.quantita }}</td>
+            <td class="col-num" data-sort="{{ v.importo }}">{{ "%.2f"|format(v.importo) }} {{ servizio.valuta }}</td>
+            <td class="col-num" data-sort="{{ v.totale }}"><strong>{{ "%.2f"|format(v.totale) }} {{ servizio.valuta }}</strong></td>
+            <td data-sort="{{ '1' if v.fatturato else '0' }}">
+                {% if v.fatturato %}
+                <span class="badge badge-fatturato">Fatturato</span>
+                {% elif v.stato_visivo == 'da_fatturare' %}
+                <span class="badge badge-da-fatturare">Da fatturare</span>
+                {% elif v.stato_visivo == 'in_scadenza' %}
+                <span class="badge badge-warn">In scadenza</span>
+                {% else %}
+                <span class="muted">—</span>
+                {% endif %}
+            </td>
+            <td class="cell-secondary">{% if v.note %}{{ v.note }}{% else %}—{% endif %}</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+
+<p class="table-legend">
+    Le occorrenze future si fermano a due anni, o alla proposta di rinnovo per i
+    contratti senza rinnovo automatico. Per marcare una fatturazione usa la
+    dashboard o il riepilogo del mese: questa pagina si limita a raccontare.
+</p>
+{% endblock %}
