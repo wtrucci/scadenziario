@@ -18,10 +18,13 @@
         <span class="badge badge-tipo" title="Si rinnova automaticamente ogni {{ s.durata_impegno_mesi or s.cadenza_mesi }} mesi">↻ auto</span>
         {% endif %}
     </td>
-    <td class="cell-secondary">{{ cadenza }}</td>
+    {# data-sort on cadenza and the amounts: "ogni 3 mesi" and "100.00 EUR"
+       sort by their first character otherwise, which is not what the column
+       means. #}
+    <td class="cell-secondary" data-sort="{{ s.cadenza_mesi }}">{{ cadenza }}</td>
     <td class="col-num">{{ s.quantita }}</td>
-    <td class="col-num">{{ "%.2f"|format(s.importo) }} {{ s.valuta }}</td>
-    <td class="col-num"><strong>{{ "%.2f"|format(s.totale) }} {{ s.valuta }}</strong></td>
+    <td class="col-num" data-sort="{{ s.importo }}">{{ "%.2f"|format(s.importo) }} {{ s.valuta }}</td>
+    <td class="col-num" data-sort="{{ s.totale }}"><strong>{{ "%.2f"|format(s.totale) }} {{ s.valuta }}</strong></td>
     <td><span class="badge badge-stato-{{ stato_s }}">{{ etichette_stato[stato_s] }}</span></td>
     <td class="col-actions">
         {% with href = "/servizi/" ~ s.id ~ "/modifica" %}

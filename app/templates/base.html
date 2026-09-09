@@ -137,6 +137,31 @@
             return (cella.textContent || "").trim().toLowerCase();
         }
 
+        // Empty-ish cells ("—" is how a missing referente/sede is drawn) always
+        // sort last, in both directions: they are absent values, not values
+        // that happen to come first or last in the alphabet.
+        function eVuota(chiave) {
+            return chiave === "" || chiave === "—" || chiave === "-";
+        }
+
+        // A column of amounts sorted as text puts "100.00" before "20.00".
+        // Returns the number when the whole column is numeric (empties aside),
+        // null when it is not, so text columns keep sorting alphabetically.
+        function numero(chiave) {
+            var n = Number(chiave.replace(/\s/g, "").replace(",", "."));
+            return isFinite(n) && chiave !== "" ? n : null;
+        }
+
+        function colonnaNumerica(chiavi) {
+            var almenoUna = false;
+            for (var i = 0; i < chiavi.length; i++) {
+                if (eVuota(chiavi[i])) continue;
+                if (numero(chiavi[i]) === null) return false;
+                almenoUna = true;
+            }
+            return almenoUna;
+        }
+
         // Sorts the clicked table's own tbody rows by the given header/column,
         // used both for the click-to-sort handler and to restore a previously
         // saved order (see leggiOrdinamento) after a reload or an HTMX swap.
@@ -150,15 +175,30 @@
             });
             th.setAttribute("data-dir", crescente ? "asc" : "desc");
 
-            var righe = Array.prototype.slice.call(corpo.querySelectorAll("tr"));
-            righe.sort(function (a, b) {
-                var ta = chiaveOrdinamento(a.children[indice]);
-                var tb = chiaveOrdinamento(b.children[indice]);
-                if (ta < tb) return crescente ? -1 : 1;
-                if (ta > tb) return crescente ? 1 : -1;
+            // Row and key are paired up front: reading the key back out of a
+            // parallel array while sort() is reordering would read the wrong one.
+            var voci = Array.prototype.slice.call(corpo.querySelectorAll("tr")).map(
+                function (riga) {
+                    var cella = riga.children[indice];
+                    return { riga: riga, chiave: cella ? chiaveOrdinamento(cella) : "" };
+                }
+            );
+            var numerica = colonnaNumerica(voci.map(function (v) { return v.chiave; }));
+            voci.sort(function (a, b) {
+                if (eVuota(a.chiave) || eVuota(b.chiave)) {
+                    if (eVuota(a.chiave) && eVuota(b.chiave)) return 0;
+                    return eVuota(a.chiave) ? 1 : -1;   // missing values last, always
+                }
+                if (numerica) {
+                    return crescente
+                        ? numero(a.chiave) - numero(b.chiave)
+                        : numero(b.chiave) - numero(a.chiave);
+                }
+                if (a.chiave < b.chiave) return crescente ? -1 : 1;
+                if (a.chiave > b.chiave) return crescente ? 1 : -1;
                 return 0;
             });
-            righe.forEach(function (riga) { corpo.appendChild(riga); });
+            voci.forEach(function (v) { corpo.appendChild(v.riga); });
         }
 
         // Click-to-sort table columns (th.sortable): alphabetical, toggles

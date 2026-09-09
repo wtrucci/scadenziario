@@ -45,12 +45,12 @@
     <thead>
         <tr>
             <th class="sortable">Cliente</th>
-            <th>Referente</th>
+            <th class="sortable">Referente</th>
             <th class="sortable">Descrizione</th>
             <th class="sortable">Scadenza</th>
-            <th class="col-num">Qtà</th>
-            <th class="col-num">Importo unit.</th>
-            <th class="col-num">Totale</th>
+            <th class="sortable col-num">Qtà</th>
+            <th class="sortable col-num">Importo unit.</th>
+            <th class="sortable col-num">Totale</th>
             <th class="sortable">Stato servizio</th>
             <th class="sortable"><span class="th-label">Fatturazione</span></th>
             {# The actions column is appended LAST on purpose: the saved
@@ -85,11 +85,15 @@
                 {% endif %}
             </td>
             <td class="col-num">{{ occ.quantita }}</td>
-            <td class="col-num">{{ "%.2f"|format(occ.importo) }} {{ s.valuta }}</td>
-            <td class="col-num"><strong>{{ "%.2f"|format(occ.totale) }} {{ s.valuta }}</strong></td>
+            {# data-sort: the displayed amount carries a currency, so as text it
+               would sort "100.00 EUR" before "20.00 EUR". #}
+            <td class="col-num" data-sort="{{ occ.importo }}">{{ "%.2f"|format(occ.importo) }} {{ s.valuta }}</td>
+            <td class="col-num" data-sort="{{ occ.totale }}"><strong>{{ "%.2f"|format(occ.totale) }} {{ s.valuta }}</strong></td>
             {% set stato_s = stati_servizi[s.id] %}
             <td><span class="badge badge-stato-{{ stato_s }}">{{ etichette_stato[stato_s] }}</span></td>
-            <td>
+            {# data-sort: the cell holds a button, so sorting needs the state
+               behind it — billed rows together, still-to-bill rows together. #}
+            <td data-sort="{{ '1' if occ.fatturato else '0' }}">
                 {% with servizio_id = s.id, data_occorrenza = occ.data_occorrenza, fatturato = occ.fatturato %}
                 {% include "servizi/_toggle_fatturato.html" %}
                 {% endwith %}
