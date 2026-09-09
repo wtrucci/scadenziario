@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, String, Text
+from sqlalchemy import Boolean, DateTime, Index, String, Text, text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base, utcnow
@@ -10,6 +10,16 @@ from app.database import Base, utcnow
 
 class Cliente(Base):
     __tablename__ = "clienti"
+
+    # Two customers cannot share a name that differs only in case. The check
+    # also lives in the routes (with a friendlier message and a warning for
+    # merely SIMILAR names, see services/clienti.py); this index is the safety
+    # net for imports, scripts and concurrent saves.
+    # Expression index on lower(nome): supported by both SQLite and PostgreSQL,
+    # so it does not stand in the way of the planned migration.
+    __table_args__ = (
+        Index("ux_clienti_nome_lower", text("lower(nome)"), unique=True),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     nome: Mapped[str] = mapped_column(String(200))

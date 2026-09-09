@@ -711,6 +711,24 @@ tr.stato-nascosto { display: none; }
     max-width: 520px;
 }
 
+/* Warning box: a caution the user can override (e.g. a customer name that
+   looks like an existing one), visually distinct from .error-list, which
+   reports something that blocks saving. Colours reuse the badge-warn theme
+   variables, so it follows the light/dark switch. */
+.warn-box {
+    margin: 0 0 1rem;
+    padding: 0.6rem 0.9rem;
+    background: var(--badge-warn-bg);
+    border: 1px solid var(--badge-warn-text);
+    border-radius: 6px;
+    color: var(--badge-warn-text);
+    font-size: 0.9rem;
+    max-width: 520px;
+}
+
+.warn-box p { margin: 0.25rem 0; }
+.warn-box ul { margin: 0.25rem 0; padding-left: 1.25rem; }
+
 /* ----------------------------------------------------------- Row highlights */
 
 tr.row-scaduta { background: var(--row-scaduta-bg) !important; }

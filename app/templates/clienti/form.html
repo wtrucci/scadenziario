@@ -11,6 +11,19 @@
 </ul>
 {% endif %}
 
+{# Similar names are a warning, not an error: they may well be two different
+   customers. Saving again submits conferma_simili and goes through. #}
+{% if simili %}
+<div class="warn-box">
+    <p><strong>Attenzione:</strong> esistono già clienti con un nome molto simile:</p>
+    <ul>
+        {% for c in simili %}<li>{{ c.nome }}</li>{% endfor %}
+    </ul>
+    <p>Se è lo stesso cliente, annulla e modifica quello esistente. Se è davvero
+       un cliente diverso, salva di nuovo per confermare.</p>
+</div>
+{% endif %}
+
 <form method="post" action="{{ action }}" class="form-card">
     <div class="field">
         <label for="nome">Nome <span class="required">*</span></label>
@@ -29,8 +42,10 @@
         <label for="attivo">Cliente attivo</label>
     </div>
 
+    {% if simili %}<input type="hidden" name="conferma_simili" value="1">{% endif %}
+
     <div class="form-actions">
-        <button type="submit" class="btn">Salva</button>
+        <button type="submit" class="btn">{% if simili %}Salva comunque{% else %}Salva{% endif %}</button>
         <a href="/clienti" class="btn btn-secondary">Annulla</a>
     </div>
 </form>
