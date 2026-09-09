@@ -1,0 +1,32 @@
+{# Results region swapped by HTMX as you type in the search box; also included
+   by the full page. Context: clienti (list), filtri (current search). #}
+{# Out-of-band swap: "Azzera ricerca" lives in the page header, outside this
+   HTMX target, so it must be refreshed alongside the results. #}
+<span id="ricerca-reset" hx-swap-oob="true">{% if filtri.q %}<a class="btn btn-secondary" href="/clienti">Azzera ricerca</a>{% endif %}</span>
+
+{% if clienti %}
+<table data-table-id="clienti">
+    <thead>
+        <tr>
+            <th class="sortable">Nome</th>
+            <th class="sortable">Note</th>
+            <th class="sortable">Attivo</th>
+            <th class="col-actions-header">
+                Azioni
+                {% include "partials/_col_toggle_btn.html" %}
+            </th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for c in clienti %}
+        {% with errore=none %}
+        {% include "clienti/_riga.html" %}
+        {% endwith %}
+        {% endfor %}
+    </tbody>
+</table>
+{% elif filtri.q %}
+<p class="muted">Nessun cliente corrisponde alla ricerca.</p>
+{% else %}
+<p class="muted">Nessun cliente presente. <a href="/clienti/nuovo">Crea il primo</a>.</p>
+{% endif %}

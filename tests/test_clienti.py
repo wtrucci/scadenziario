@@ -141,6 +141,40 @@ class TestRotteClienti(unittest.TestCase):
         self._crea("  Gamma    Group  ", conferma_simili="1")
         self.assertIn("Gamma Group", self._nomi())
 
+    # --- search -----------------------------------------------------------
+
+    def test_ricerca_per_nome(self):
+        self._crea("Beta Impianti", conferma_simili="1")
+        r = self.client.get("/clienti", params={"q": "beta"})
+        self.assertIn("Beta Impianti", r.text)
+        self.assertNotIn("Acme Srl", r.text)
+
+    def test_ricerca_nelle_note(self):
+        self.client.post(
+            "/clienti",
+            data={"nome": "Gamma", "note": "sede di Cherasco", "attivo": "on",
+                  "conferma_simili": "1"},
+            follow_redirects=False,
+        )
+        r = self.client.get("/clienti", params={"q": "cherasco"})
+        self.assertIn("Gamma", r.text)
+        self.assertNotIn("Acme Srl", r.text)
+
+    def test_ricerca_senza_risultati_lo_dice(self):
+        r = self.client.get("/clienti", params={"q": "inesistente"})
+        self.assertIn("Nessun cliente corrisponde", r.text)
+
+    def test_ricerca_vuota_mostra_tutti(self):
+        self._crea("Beta Impianti", conferma_simili="1")
+        r = self.client.get("/clienti", params={"q": "  "})
+        self.assertIn("Acme Srl", r.text)
+        self.assertIn("Beta Impianti", r.text)
+
+    def test_richiesta_htmx_torna_solo_i_risultati(self):
+        r = self.client.get("/clienti", headers={"HX-Request": "true"})
+        self.assertNotIn("<html", r.text)
+        self.assertIn("Acme Srl", r.text)
+
     # --- database safety net ---------------------------------------------
 
     def test_indice_unico_blocca_il_duplicato_scritto_a_mano(self):

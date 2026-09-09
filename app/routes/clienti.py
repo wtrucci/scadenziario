@@ -9,7 +9,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, Form, Request
 from fastapi.exceptions import HTTPException
 from fastapi.responses import RedirectResponse, Response
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -74,13 +74,27 @@ def _valori_da_cliente(c: Cliente) -> dict:
 @router.get("")
 def lista_clienti(
     request: Request,
+    q: str | None = None,
     db: Session = Depends(get_db),
     user: Utente = Depends(require_login),
 ):
-    clienti = db.scalars(select(Cliente).order_by(Cliente.nome)).all()
-    return templates.TemplateResponse(
-        request, "clienti/lista.html", {"user": user, "clienti": clienti}
+    ricerca = (q or "").strip()
+    query = select(Cliente).order_by(Cliente.nome)
+    # Every word must match somewhere (AND between words, OR between columns),
+    # the same rule as the services search — see services/filtri.py.
+    for parola in ricerca.split():
+        schema = f"%{parola}%"
+        query = query.where(or_(Cliente.nome.ilike(schema), Cliente.note.ilike(schema)))
+    clienti = db.scalars(query).all()
+
+    contesto = {"user": user, "clienti": clienti, "filtri": {"q": ricerca}}
+    # HTMX request (typing in the search box): swap only the results region.
+    template = (
+        "clienti/_risultati.html"
+        if request.headers.get("HX-Request")
+        else "clienti/lista.html"
     )
+    return templates.TemplateResponse(request, template, contesto)
 
 
 @router.get("/nuovo")

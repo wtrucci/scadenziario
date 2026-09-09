@@ -5,31 +5,22 @@
 {% block content %}
 <div class="page-header">
     <h1>Clienti</h1>
-    <a class="btn" href="/clienti/nuovo">+ Nuovo cliente</a>
+    <div class="page-header-actions">
+        {# Same search as the services page: in the open, typing filters as you
+           go (see the HTMX trigger), and the term lives in the URL so a
+           filtered list can be linked. #}
+        <form class="ricerca" hx-get="/clienti" hx-target="#risultati" hx-push-url="true"
+              hx-trigger="input changed delay:300ms from:#q, search from:#q"
+              onsubmit="return false">
+            <input type="search" id="q" name="q" value="{{ filtri.q }}"
+                   placeholder="Cerca nome o note…" aria-label="Cerca fra i clienti">
+        </form>
+        <span id="ricerca-reset">{% if filtri.q %}<a class="btn btn-secondary" href="/clienti">Azzera ricerca</a>{% endif %}</span>
+        <a class="btn" href="/clienti/nuovo">+ Nuovo cliente</a>
+    </div>
 </div>
 
-{% if clienti %}
-<table data-table-id="clienti">
-    <thead>
-        <tr>
-            <th class="sortable">Nome</th>
-            <th>Note</th>
-            <th class="sortable">Attivo</th>
-            <th class="col-actions-header">
-                Azioni
-                {% include "partials/_col_toggle_btn.html" %}
-            </th>
-        </tr>
-    </thead>
-    <tbody>
-        {% for c in clienti %}
-        {% with errore=none %}
-        {% include "clienti/_riga.html" %}
-        {% endwith %}
-        {% endfor %}
-    </tbody>
-</table>
-{% else %}
-<p class="muted">Nessun cliente presente. <a href="/clienti/nuovo">Crea il primo</a>.</p>
-{% endif %}
+<div id="risultati">
+    {% include "clienti/_risultati.html" %}
+</div>
 {% endblock %}
