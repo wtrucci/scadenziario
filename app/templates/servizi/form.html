@@ -11,6 +11,28 @@
 </ul>
 {% endif %}
 
+{# Look-alike services are a warning, not an error: several identical contracts
+   for one customer are normal (one per end customer). Each is listed with the
+   date and the serial, which is what tells them apart. #}
+{% if simili is defined and simili %}
+<div class="warn-box">
+    <p><strong>Attenzione:</strong> questo cliente ha già
+       {{ simili|length }} servizio{{ "" if simili|length == 1 else " simili" }} con
+       la stessa descrizione e lo stesso referente:</p>
+    <ul>
+        {% for x in simili %}
+        <li>
+            {{ x.descrizione }} — decorrenza {{ x.data_scadenza.strftime('%d/%m/%Y') }},
+            {{ x.quantita }} × {{ "%.2f"|format(x.importo) }} {{ x.valuta }}
+            {% if x.numero_seriale %}, seriale {{ x.numero_seriale }}{% endif %}
+        </li>
+        {% endfor %}
+    </ul>
+    <p>Se lo stai inserendo per la seconda volta, annulla. Se è davvero un altro
+       contratto, salva di nuovo per confermare.</p>
+</div>
+{% endif %}
+
 <form method="post" action="{{ action }}" class="form-card form-card-wide">
 
     {# --- Cliente --- #}
@@ -209,9 +231,10 @@
        The server validates it (see _destinazione in routes/servizi.py). #}
     {% set torna_a = ritorno|default('/servizi', true) %}
     <input type="hidden" name="ritorno" value="{{ torna_a }}">
+    {% if simili is defined and simili %}<input type="hidden" name="conferma_simili" value="1">{% endif %}
 
     <div class="form-actions">
-        <button type="submit" class="btn">Salva</button>
+        <button type="submit" class="btn">{% if simili is defined and simili %}Salva comunque{% else %}Salva{% endif %}</button>
         <a href="{{ torna_a }}" class="btn btn-secondary">Annulla</a>
     </div>
 </form>

@@ -23,6 +23,10 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models.cliente import Cliente
+# Re-exported: normalizza_nome/chiave_identita moved to services/testo.py when
+# the same rules were needed for service descriptions, and callers (routes,
+# tests) still reach them through this module.
+from app.services.testo import chiave_identita, normalizza_nome  # noqa: F401
 
 # Legal forms carry no identity: "Acme Srl" and "Acme S.p.A." differ as
 # companies, but as typed names they are the same "Acme" plus a suffix the user
@@ -33,23 +37,6 @@ FORME_GIURIDICHE = {
     "coop", "soc", "societa", "ltd", "llc", "inc", "gmbh", "sa", "bv", "plc",
     "di", "e", "c", "cooperativa",
 }
-
-
-def normalizza_nome(nome: str) -> str:
-    """Return the name as it should be STORED: trimmed, inner runs of
-    whitespace collapsed to a single space. Casing is left as the user typed
-    it — "IBM" must not become "Ibm"."""
-    return re.sub(r"\s+", " ", nome).strip()
-
-
-def chiave_identita(nome: str) -> str:
-    """Key for the hard duplicate check: same name up to casing and spacing.
-
-    Must stay consistent with the ``lower(nome)`` unique index in the database:
-    since names are stored already normalised, lowercasing the normalised name
-    is exactly what the index sees.
-    """
-    return normalizza_nome(nome).casefold()
 
 
 def chiave_similarita(nome: str) -> str:

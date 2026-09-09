@@ -28,6 +28,7 @@ from app.models.utente import Utente
 from app.routes.dashboard import _contesto_riepilogo, _contesto_risultati
 from app.services import filtri, periodi, riepilogo
 from app.services.filtri import condizioni_ricerca
+from app.services.servizi import trova_servizi_simili
 from app.services.occorrenze import (
     ETICHETTE_STATO_CONTRATTO,
     STATI_CONTRATTO,
@@ -450,6 +451,7 @@ def crea_servizio(
     numero_seriale: str = Form(""),
     luogo_installazione: str = Form(""),
     note: str = Form(""),
+    conferma_simili: str | None = Form(None),  # set when the user confirmed the warning
     db: Session = Depends(get_db),
     user: Utente = Depends(require_login),
 ):
@@ -473,11 +475,21 @@ def crea_servizio(
         importo_raw=importo, quantita_raw=quantita, valuta=valuta,
         preavviso_giorni_raw=preavviso_giorni, db=db,
     )
-    if errori:
+    # Look-alike services are a warning, never an error: one customer here has
+    # fifteen identical "Sentinel One" contracts, one per end customer. It is
+    # only asked once — confirming means "yes, another one" (see
+    # services/servizi.py).
+    simili = (
+        []
+        if errori or conferma_simili is not None
+        else trova_servizi_simili(db, parsed["cliente_id"], descrizione, referente)
+    )
+    if errori or simili:
         return templates.TemplateResponse(
             request, "servizi/form.html",
             {"user": user, "titolo": "Nuovo servizio", "action": "/servizi",
-             "valori": valori, "errori": errori, **_form_choices(db)},
+             "valori": valori, "errori": errori, "simili": simili,
+             **_form_choices(db)},
             status_code=422,
         )
     nuovo = Servizio(
@@ -554,6 +566,7 @@ def aggiorna_servizio(
     luogo_installazione: str = Form(""),
     note: str = Form(""),
     ritorno: str = Form(""),  # page to go back to (see _destinazione)
+    conferma_simili: str | None = Form(None),
     db: Session = Depends(get_db),
     user: Utente = Depends(require_login),
 ):
@@ -587,7 +600,14 @@ def aggiorna_servizio(
         importo_raw=importo, quantita_raw=quantita, valuta=valuta,
         preavviso_giorni_raw=preavviso_giorni, db=db,
     )
-    if errori:
+    simili = (
+        []
+        if errori or conferma_simili is not None
+        else trova_servizi_simili(
+            db, parsed["cliente_id"], descrizione, referente, escludi_id=servizio_id
+        )
+    )
+    if errori or simili:
         choices = _form_choices(db)
         if s.cliente not in choices["clienti_attivi"]:
             choices["clienti_attivi"] = [s.cliente] + list(choices["clienti_attivi"])
@@ -595,7 +615,7 @@ def aggiorna_servizio(
             request, "servizi/form.html",
             {"user": user, "titolo": f"Modifica — {s.descrizione}",
              "action": f"/servizi/{servizio_id}/modifica",
-             "servizio": s, "valori": valori, "errori": errori,
+             "servizio": s, "valori": valori, "errori": errori, "simili": simili,
              "etichetta_stato_attuale": ETICHETTE_STATO_CONTRATTO[stato_contratto(s)],
              "prossima_scadenza": prossima_scadenza(s, date.today()),
              "ritorno": destinazione,
