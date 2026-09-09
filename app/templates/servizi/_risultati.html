@@ -1,7 +1,7 @@
 {# Results region swapped by HTMX on filter changes; also included by the full
    page. Context: righe (list of (Servizio, cadenza label, next due date,
    computed contract state)), filtri, etichette_stato (state -> label). #}
-{% set filtri_attivi = filtri.cliente or filtri.referente or filtri.stato %}
+{% set filtri_attivi = filtri.cliente or filtri.referente or filtri.stato or filtri.q %}
 {# Out-of-band swaps: the filter badge and "Azzera filtri" button live in the
    page header, outside this HTMX target, but must still reflect the filters
    that were just applied — otherwise they'd only update on a full reload. #}
@@ -37,8 +37,8 @@
 </table>
 {% else %}
 <p class="muted">
-    {% if filtri.cliente or filtri.referente or filtri.stato %}
-    Nessun servizio corrisponde ai filtri attivi.
+    {% if filtri_attivi %}
+    Nessun servizio corrisponde alla ricerca o ai filtri attivi.
     {% else %}
     Nessun servizio presente. <a href="/servizi/nuovo">Crea il primo</a>.
     {% endif %}

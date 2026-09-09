@@ -16,7 +16,7 @@ from fastapi import APIRouter, Depends, Form, Request
 from fastapi.exceptions import HTTPException
 from fastapi.responses import RedirectResponse, Response
 from sqlalchemy import select
-from sqlalchemy.orm import Session, joinedload
+from sqlalchemy.orm import Session, contains_eager, joinedload
 
 from app.database import get_db, utcnow
 from app.dependencies import require_login
@@ -27,6 +27,7 @@ from app.models.servizio import Servizio
 from app.models.utente import Utente
 from app.routes.dashboard import _contesto_riepilogo, _contesto_risultati
 from app.services import filtri, periodi, riepilogo
+from app.services.filtri import condizioni_ricerca
 from app.services.occorrenze import (
     ETICHETTE_STATO_CONTRATTO,
     STATI_CONTRATTO,
@@ -325,6 +326,7 @@ def lista_servizi(
     cliente: str | None = None,
     referente: str | None = None,
     stato: str | None = None,
+    q: str | None = None,
     db: Session = Depends(get_db),
     user: Utente = Depends(require_login),
 ):
@@ -332,6 +334,7 @@ def lista_servizi(
     cliente_id = int(cliente) if (cliente and cliente.isdigit()) else None
     referente_val = referente.strip() if referente and referente.strip() else None
     stato_val = stato if stato in STATI_CONTRATTO else None
+    ricerca = (q or "").strip()
 
     # cliente/referente are SQL conditions on service columns; the contract
     # state is NOT a column (only disdetto is — see stato_contratto), so it is
@@ -339,13 +342,16 @@ def lista_servizi(
     # dashboard's occurrence-level state filter.
     query = (
         select(Servizio)
-        .options(joinedload(Servizio.cliente))
+        .join(Servizio.cliente)
+        .options(contains_eager(Servizio.cliente))
         .order_by(Servizio.data_inizio)
     )
     if cliente_id is not None:
         query = query.where(Servizio.cliente_id == cliente_id)
     if referente_val:
         query = query.where(Servizio.referente == referente_val)
+    for condizione in condizioni_ricerca(ricerca):
+        query = query.where(condizione)
 
     servizi = db.scalars(query).all()
     oggi = date.today()
@@ -369,6 +375,7 @@ def lista_servizi(
             "cliente": cliente_id,
             "referente": referente_val or "",
             "stato": stato_val or "",
+            "q": ricerca,
         },
         "clienti": filtri.clienti_disponibili(db),
         "referenti": filtri.referenti_disponibili(db),

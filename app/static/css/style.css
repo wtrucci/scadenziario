@@ -659,6 +659,24 @@ tr.stato-nascosto { display: none; }
    actions is not a wall of red. */
 .icon-btn-danger:hover { color: var(--danger); border-color: var(--danger); }
 
+/* Free-text search in the services page header. Sized to fit a serial
+   number, which is the longest thing anyone pastes in here. */
+.ricerca input[type="search"] {
+    width: 22rem;
+    max-width: 100%;
+    padding: 0.45rem 0.7rem;
+    background: var(--surface);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    font-size: 0.9rem;
+}
+
+.ricerca input[type="search"]:focus-visible {
+    outline: 2px solid var(--primary);
+    outline-offset: 1px;
+}
+
 /* ------------------------------------------------------------------ Badges */
 
 .badge {

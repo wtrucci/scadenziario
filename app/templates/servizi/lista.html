@@ -3,7 +3,7 @@
 {% block title %}Servizi — Scadenziario{% endblock %}
 
 {% block content %}
-{% set filtri_attivi = filtri.cliente or filtri.referente or filtri.stato %}
+{% set filtri_attivi = filtri.cliente or filtri.referente or filtri.stato or filtri.q %}
 <div class="page-header">
     <h1>
         Servizi
@@ -17,6 +17,19 @@
         </button>
     </h1>
     <div class="page-header-actions">
+        {# Search sits in the open, not inside the filter dialog: looking for a
+           serial number or a referente is the most frequent gesture on this
+           page, and one behind a dialog is a gesture you stop making.
+           hx-include carries the dropdown filters along, so search and filters
+           combine instead of overwriting each other. #}
+        <form class="ricerca" hx-get="/servizi" hx-target="#risultati" hx-push-url="true"
+              hx-trigger="input changed delay:300ms from:#q, search from:#q"
+              hx-include="#filtri-dialog form"
+              onsubmit="return false">
+            <input type="search" id="q" name="q" value="{{ filtri.q }}"
+                   placeholder="Cerca descrizione, referente, sede, seriale…"
+                   aria-label="Cerca fra i servizi">
+        </form>
         <span id="filtri-reset">{% if filtri_attivi %}<a class="btn btn-secondary" href="/servizi">Azzera filtri</a>{% endif %}</span>
         <a class="btn" href="/servizi/nuovo">+ Nuovo servizio</a>
     </div>
@@ -29,7 +42,7 @@
    values, so a bookmarked filtered URL shows the right state. On servizi the
    state filter uses the service's own status (attivo/scaduto/...). #}
 <dialog id="filtri-dialog" class="filtri-dialog">
-    <form class="filtri" hx-get="/servizi" hx-target="#risultati" hx-push-url="true" hx-trigger="change">
+    <form class="filtri" hx-get="/servizi" hx-target="#risultati" hx-push-url="true" hx-trigger="change" hx-include="#q">
         <div class="field">
             <label for="f-cliente">Cliente</label>
             <select id="f-cliente" name="cliente">
