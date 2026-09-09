@@ -16,14 +16,14 @@
         {% endif %}
     </td>
     <td class="col-actions">
-        <a href="/clienti/{{ c.id }}/modifica">Modifica</a>
-        <button class="btn-link btn-danger"
-            hx-delete="/clienti/{{ c.id }}"
-            hx-target="#cliente-{{ c.id }}"
-            hx-swap="outerHTML"
-            hx-confirm="Eliminare '{{ c.nome }}'? Questa operazione è irreversibile.">
-            Elimina
-        </button>
+        {% with href = "/clienti/" ~ c.id ~ "/modifica" %}
+        {% include "partials/_btn_modifica.html" %}
+        {% endwith %}
+        {% with url = "/clienti/" ~ c.id,
+                target = "#cliente-" ~ c.id,
+                conferma = "Eliminare '" ~ c.nome ~ "'? Questa operazione è irreversibile." %}
+        {% include "partials/_btn_elimina.html" %}
+        {% endwith %}
         {% if errore is defined and errore %}
         <span class="error-inline">{{ errore }}</span>
         {% endif %}

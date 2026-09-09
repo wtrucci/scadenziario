@@ -24,13 +24,13 @@
     <td class="col-num"><strong>{{ "%.2f"|format(s.totale) }} {{ s.valuta }}</strong></td>
     <td><span class="badge badge-stato-{{ stato_s }}">{{ etichette_stato[stato_s] }}</span></td>
     <td class="col-actions">
-        <a href="/servizi/{{ s.id }}/modifica">Modifica</a>
-        <button class="btn-link btn-danger"
-            hx-delete="/servizi/{{ s.id }}"
-            hx-target="#servizio-{{ s.id }}"
-            hx-swap="outerHTML"
-            hx-confirm="Eliminare il servizio '{{ s.descrizione }}'?">
-            Elimina
-        </button>
+        {% with href = "/servizi/" ~ s.id ~ "/modifica" %}
+        {% include "partials/_btn_modifica.html" %}
+        {% endwith %}
+        {% with url = "/servizi/" ~ s.id,
+                target = "#servizio-" ~ s.id,
+                conferma = "Eliminare il servizio '" ~ s.descrizione ~ "'?" %}
+        {% include "partials/_btn_elimina.html" %}
+        {% endwith %}
     </td>
 </tr>

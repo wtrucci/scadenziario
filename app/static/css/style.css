@@ -632,6 +632,13 @@ tr.stato-nascosto { display: none; }
 .col-actions { white-space: nowrap; }
 .col-actions a,
 .col-actions button { margin-right: 0.75rem; }
+/* Icon actions sit closer together than text links: 0.75rem between two
+   1.9rem squares reads as two unrelated buttons. */
+.col-actions .icon-btn { margin-right: 0.3rem; }
+
+/* Destructive icon action (bin): neutral until pointed at, so a row of
+   actions is not a wall of red. */
+.icon-btn-danger:hover { color: var(--danger); border-color: var(--danger); }
 
 /* ------------------------------------------------------------------ Badges */
 
