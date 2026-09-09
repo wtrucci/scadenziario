@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+
+{% block title %}Notifiche — Scadenziario{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Notifiche</h1>
+    <div class="page-header-actions">
+        <form class="ricerca" hx-get="/notifiche" hx-target="#risultati" hx-push-url="true"
+              hx-trigger="input changed delay:300ms from:#q, search from:#q"
+              onsubmit="return false">
+            {# The active esito filter travels with the search, or typing would
+               silently drop it. #}
+            <input type="hidden" name="esito" value="{{ filtri.esito }}">
+            <input type="search" id="q" name="q" value="{{ filtri.q }}"
+                   placeholder="Cerca cliente, servizio, errore…" aria-label="Cerca fra le notifiche">
+        </form>
+        <span id="ricerca-reset">{% if filtri.q or filtri.esito %}<a class="btn btn-secondary" href="/notifiche">Azzera</a>{% endif %}</span>
+    </div>
+</div>
+
+<div id="risultati">
+    {% include "notifiche/_risultati.html" %}
+</div>
+{% endblock %}

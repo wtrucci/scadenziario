@@ -1,0 +1,74 @@
+{# Results region swapped by HTMX while you type in the search box; also
+   included by the full page. Context: righe (NotificaLog), conteggi,
+   link_esiti, filtri, in_locale (UTC -> local time), limite. #}
+{# Out-of-band swaps only make sense in an HTMX response: on a full page load
+   this partial is rendered inside the page, which already has these elements
+   in its header. #}
+{% if request.headers.get('HX-Request') %}
+<span id="ricerca-reset" hx-swap-oob="true">{% if filtri.q or filtri.esito %}<a class="btn btn-secondary" href="/notifiche">Azzera</a>{% endif %}</span>
+{% endif %}
+
+<div class="summary-cards">
+    <a class="summary-card summary-card-ok{% if filtri.esito == 'inviate' %} summary-card-attiva{% endif %}"
+       href="{{ link_esiti.inviate }}" aria-pressed="{{ 'true' if filtri.esito == 'inviate' else 'false' }}"
+       title="{% if filtri.esito == 'inviate' %}Mostra tutte le notifiche{% else %}Mostra solo quelle inviate{% endif %}">
+        <span class="summary-value">{{ conteggi.inviate }}</span>
+        <span class="summary-label">Inviate</span>
+    </a>
+    <a class="summary-card summary-card-alert{% if filtri.esito == 'fallite' %} summary-card-attiva{% endif %}"
+       href="{{ link_esiti.fallite }}" aria-pressed="{{ 'true' if filtri.esito == 'fallite' else 'false' }}"
+       title="{% if filtri.esito == 'fallite' %}Mostra tutte le notifiche{% else %}Mostra solo quelle fallite{% endif %}">
+        <span class="summary-value">{{ conteggi.fallite }}</span>
+        <span class="summary-label">Fallite</span>
+    </a>
+</div>
+
+{% if righe %}
+<table class="table-servizi" data-table-id="notifiche">
+    <thead>
+        <tr>
+            <th class="sortable">Inviata il</th>
+            <th class="sortable">Cliente</th>
+            <th class="sortable">Servizio</th>
+            <th class="sortable">Scadenza</th>
+            <th class="sortable">Tipo</th>
+            <th class="sortable">Canale</th>
+            <th class="sortable">Esito</th>
+            <th class="sortable col-actions-header">
+                <span class="th-label">Dettaglio</span>
+                {% include "partials/_col_toggle_btn.html" %}
+            </th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for n in righe %}
+        {% set locale = in_locale(n.inviata_il) %}
+        <tr class="{{ 'row-da-fatturare' if not n.esito else '' }}">
+            <td class="col-data" data-sort="{{ n.inviata_il.isoformat() }}">{{ locale.strftime('%d/%m/%Y %H:%M') }}</td>
+            <td class="cell-primary">{{ n.servizio.cliente.nome }}</td>
+            <td>{{ n.servizio.descrizione }}</td>
+            <td class="col-data" data-sort="{{ n.data_occorrenza.isoformat() }}">{{ n.data_occorrenza.strftime('%d/%m/%Y') }}</td>
+            <td><span class="badge badge-tipo">{{ n.tipo.value.replace('_', ' ') }}</span></td>
+            <td class="cell-secondary">{{ n.canale.value }}</td>
+            <td data-sort="{{ '1' if n.esito else '0' }}">
+                {% if n.esito %}
+                <span class="badge badge-ok">Inviata</span>
+                {% else %}
+                <span class="badge badge-da-fatturare">Fallita</span>
+                {% endif %}
+            </td>
+            <td class="cell-secondary">{% if n.dettaglio %}{{ n.dettaglio }}{% else %}—{% endif %}</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% if righe|length == limite %}
+<p class="muted">Mostrate le {{ limite }} notifiche più recenti. Per andare più
+   indietro, restringi con la ricerca o guarda solo le fallite.</p>
+{% endif %}
+{% elif filtri.q or filtri.esito %}
+<p class="muted">Nessuna notifica corrisponde ai criteri attivi.</p>
+{% else %}
+<p class="muted">Nessuna notifica inviata finora. Le notifiche partono dallo
+   scheduler quando una scadenza entra nel preavviso del servizio.</p>
+{% endif %}
