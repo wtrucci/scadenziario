@@ -699,6 +699,21 @@ tr.stato-nascosto { display: none; }
     color: var(--error-text);
 }
 
+/* A form control with a small action beside it (the customer dropdown and
+   its "+" in the service form): the control takes the room, the button
+   keeps its size. */
+.field-con-azione {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.field-con-azione select,
+.field-con-azione input {
+    flex: 1;
+    min-width: 0;
+}
+
 /* ------------------------------------------------------------------ Badges */
 
 .badge {

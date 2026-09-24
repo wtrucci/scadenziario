@@ -38,6 +38,9 @@
     {# --- Cliente --- #}
     <div class="field">
         <label for="cliente_id">Cliente <span class="required">*</span></label>
+        {# The "+" opens a dialog to create the customer on the spot: leaving
+           this form to add one would lose everything typed so far. #}
+        <div class="field-con-azione">
         <select id="cliente_id" name="cliente_id" required>
             <option value="">— seleziona —</option>
             {% for c in clienti_attivi %}
@@ -48,6 +51,11 @@
             </option>
             {% endfor %}
         </select>
+        <button type="button" class="icon-btn" title="Nuovo cliente" aria-label="Nuovo cliente"
+                onclick="document.getElementById('nuovo-cliente-dialog').showModal(); document.getElementById('rapido-nome').focus()">
+            <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        </button>
+        </div>
     </div>
 
     {# --- Referente: subito sotto il cliente --- #}
@@ -238,6 +246,19 @@
         <a href="{{ torna_a }}" class="btn btn-secondary">Annulla</a>
     </div>
 </form>
+
+{# Outside the service form on purpose: forms cannot be nested, and the inner
+   one would otherwise submit the whole service. #}
+<dialog id="nuovo-cliente-dialog" class="filtri-dialog">
+    <h3>Nuovo cliente</h3>
+    <form hx-post="/clienti/rapido" hx-target="#nuovo-cliente-corpo" hx-swap="innerHTML">
+        <div id="nuovo-cliente-corpo">
+            {% with valori = {"nome": "", "note": ""}, errori = [], simili = [] %}
+            {% include "clienti/_form_rapido.html" %}
+            {% endwith %}
+        </div>
+    </form>
+</dialog>
 
 <script>
     (function () {

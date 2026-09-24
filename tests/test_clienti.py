@@ -175,6 +175,59 @@ class TestRotteClienti(unittest.TestCase):
         self.assertNotIn("<html", r.text)
         self.assertIn("Acme Srl", r.text)
 
+    # --- quick create from the service form (POST /clienti/rapido) -------
+
+    def _rapido(self, nome, **extra):
+        return self.client.post("/clienti/rapido", data={"nome": nome, "note": "", **extra})
+
+    def test_rapido_crea_e_segnala_il_nuovo_cliente(self):
+        import json
+        r = self._rapido("Beta Impianti")
+        self.assertEqual(r.status_code, 200)
+        evento = json.loads(r.headers["HX-Trigger"])["clienteCreato"]
+        self.assertEqual(evento["nome"], "Beta Impianti")
+        self.assertIn("Beta Impianti", self._nomi())
+        # The dialog comes back empty, ready for the next customer.
+        self.assertIn('value=""', r.text)
+
+    def test_rapido_duplicato_rifiutato_senza_evento(self):
+        r = self._rapido("ACME srl")
+        # 200, not 422: HTMX would not swap an error response, and the user
+        # must see why the save did not happen.
+        self.assertEqual(r.status_code, 200)
+        self.assertIn("Esiste già un cliente", r.text)
+        self.assertNotIn("HX-Trigger", r.headers)
+        self.assertEqual(self._nomi(), ["Acme Srl"])
+
+    def test_rapido_simile_chiede_conferma(self):
+        r = self._rapido("Acme S.r.l.")
+        self.assertIn("nome molto simile", r.text)
+        self.assertIn("Salva comunque", r.text)
+        self.assertNotIn("HX-Trigger", r.headers)
+
+    def test_rapido_simile_confermato_viene_creato(self):
+        r = self._rapido("Acme S.r.l.", conferma_simili="1")
+        self.assertIn("HX-Trigger", r.headers)
+        self.assertIn("Acme S.r.l.", self._nomi())
+
+    def test_rapido_nome_accentato_sopravvive_nell_header(self):
+        import json
+        r = self._rapido("Società Cooperativa Àlfa")
+        evento = json.loads(r.headers["HX-Trigger"])["clienteCreato"]
+        self.assertEqual(evento["nome"], "Società Cooperativa Àlfa")
+
+    def test_rapido_nome_vuoto(self):
+        r = self._rapido("   ")
+        self.assertIn("Il nome è obbligatorio", r.text)
+        self.assertNotIn("HX-Trigger", r.headers)
+
+    def test_form_servizio_ha_il_pulsante_e_la_finestra(self):
+        h = self.client.get("/servizi/nuovo").text
+        self.assertIn('id="nuovo-cliente-dialog"', h)
+        self.assertIn('hx-post="/clienti/rapido"', h)
+        # The dialog form must not be nested inside the service form.
+        self.assertLess(h.index("</form>"), h.index('id="nuovo-cliente-dialog"'))
+
     # --- database safety net ---------------------------------------------
 
     def test_indice_unico_blocca_il_duplicato_scritto_a_mano(self):

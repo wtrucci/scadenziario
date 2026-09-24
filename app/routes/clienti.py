@@ -4,6 +4,7 @@ CRUD routes for customers (clienti).
 All routes require an authenticated user (require_login).
 Delete uses HTMX hx-delete; all other writes use standard HTML form POST.
 """
+import json
 from typing import Optional
 
 from fastapi import APIRouter, Depends, Form, Request
@@ -142,6 +143,56 @@ def crea_cliente(
     db.add(Cliente(nome=normalizza_nome(nome), note=note.strip() or None, attivo=is_attivo))
     db.commit()
     return RedirectResponse(url="/clienti", status_code=303)
+
+
+@router.post("/rapido")
+def crea_cliente_rapido(
+    request: Request,
+    nome: str = Form(""),
+    note: str = Form(""),
+    conferma_simili: Optional[str] = Form(None),
+    db: Session = Depends(get_db),
+    user: Utente = Depends(require_login),
+):
+    """Create a customer from the dialog inside the service form (HTMX).
+
+    Same rules as the customer page (_valida_nome): an exact duplicate is
+    refused, a merely similar name asks for confirmation. Leaving the service
+    form to add a customer would throw away everything typed so far, which is
+    why this exists at all.
+
+    Validation problems re-render the dialog with status 200, not 422: HTMX
+    does not swap error responses by default, and the user must see why the
+    save did not happen.
+
+    On success the dialog comes back empty for the next use, and the
+    HX-Trigger header hands id and name to app.js, which adds the customer to
+    the dropdown in alphabetical position and selects it — without touching
+    the rest of the service form.
+    """
+    errori, simili = _valida_nome(db, nome, conferma_simili=conferma_simili is not None)
+    if errori or simili:
+        return templates.TemplateResponse(
+            request,
+            "clienti/_form_rapido.html",
+            {"valori": {"nome": nome, "note": note}, "errori": errori, "simili": simili},
+        )
+
+    cliente = Cliente(nome=normalizza_nome(nome), note=note.strip() or None, attivo=True)
+    db.add(cliente)
+    db.commit()
+
+    risposta = templates.TemplateResponse(
+        request,
+        "clienti/_form_rapido.html",
+        {"valori": {"nome": "", "note": ""}, "errori": [], "simili": []},
+    )
+    # ensure_ascii (the default) matters: headers are latin-1, and a name like
+    # "Società" would otherwise not survive the trip. JSON \u escapes do.
+    risposta.headers["HX-Trigger"] = json.dumps(
+        {"clienteCreato": {"id": cliente.id, "nome": cliente.nome}}
+    )
+    return risposta
 
 
 @router.get("/{cliente_id}/modifica")

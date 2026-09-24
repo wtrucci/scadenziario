@@ -1,0 +1,38 @@
+{# Body of the "nuovo cliente" dialog in the service form. Rendered on page
+   load (empty) and returned by POST /clienti/rapido: with errors or a
+   similarity warning when the save did not happen, empty again after a
+   successful save. Context: valori (nome, note), errori, simili. #}
+{% if errori %}
+<ul class="error-list">
+    {% for e in errori %}<li>{{ e }}</li>{% endfor %}
+</ul>
+{% endif %}
+
+{% if simili %}
+<div class="warn-box">
+    <p><strong>Attenzione:</strong> esistono già clienti con un nome molto simile:</p>
+    <ul>
+        {% for c in simili %}<li>{{ c.nome }}</li>{% endfor %}
+    </ul>
+    <p>Se è uno di questi, chiudi e sceglilo dall'elenco. Se è davvero un cliente
+       diverso, salva di nuovo per confermare.</p>
+</div>
+{% endif %}
+
+<div class="field">
+    <label for="rapido-nome">Nome <span class="required">*</span></label>
+    <input type="text" id="rapido-nome" name="nome" value="{{ valori.nome }}"
+           required maxlength="200" autocomplete="off">
+</div>
+
+<div class="field">
+    <label for="rapido-note">Note</label>
+    <textarea id="rapido-note" name="note" rows="2">{{ valori.note }}</textarea>
+</div>
+
+{% if simili %}<input type="hidden" name="conferma_simili" value="1">{% endif %}
+
+<div class="form-actions">
+    <button type="submit" class="btn">{% if simili %}Salva comunque{% else %}Crea cliente{% endif %}</button>
+    <button type="button" class="btn btn-secondary" data-chiudi-dialog>Annulla</button>
+</div>

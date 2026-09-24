@@ -447,3 +447,37 @@ document.addEventListener("DOMContentLoaded", function () {
     initTabelleDati(document);
 });
 document.addEventListener("htmx:afterSwap", function (e) { initTabelleDati(e.target); });
+
+// "Nuovo cliente" dialog in the service form. POST /clienti/rapido answers a
+// successful save with an HX-Trigger header carrying the new customer's id
+// and name; here it joins the dropdown in alphabetical position and gets
+// selected, and the dialog closes. Nothing else in the service form is
+// touched, which is the whole point of creating the customer in place.
+document.body.addEventListener("clienteCreato", function (e) {
+    var select = document.getElementById("cliente_id");
+    if (!select) return;
+    var nuovo = new Option(e.detail.nome, String(e.detail.id));
+    var prima = null;
+    for (var i = 0; i < select.options.length; i++) {
+        var opt = select.options[i];
+        if (opt.value === "") continue;   // keep "— seleziona —" on top
+        if (opt.text.localeCompare(e.detail.nome, "it", { sensitivity: "base" }) > 0) {
+            prima = opt;
+            break;
+        }
+    }
+    select.insertBefore(nuovo, prima);
+    select.value = String(e.detail.id);
+    select.dispatchEvent(new Event("change", { bubbles: true }));
+    var dialog = document.getElementById("nuovo-cliente-dialog");
+    if (dialog) dialog.close();
+});
+
+// Any button marked data-chiudi-dialog closes the <dialog> it sits in.
+// Delegated, so it also works on dialog content swapped in by HTMX.
+document.addEventListener("click", function (e) {
+    var bottone = e.target.closest("[data-chiudi-dialog]");
+    if (!bottone) return;
+    var dialog = bottone.closest("dialog");
+    if (dialog) dialog.close();
+});
