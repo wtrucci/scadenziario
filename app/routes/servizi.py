@@ -28,7 +28,8 @@ from app.models.utente import Utente
 from app.routes.dashboard import _contesto_riepilogo, _contesto_risultati
 from app.services import filtri, periodi, riepilogo
 from app.services.filtri import condizioni_ricerca
-from app.services.servizi import trova_servizi_simili
+from app.services.pdf import GruppoServiziPdf, RigaServizioPdf, genera_pdf_servizi
+from app.services.servizi import trova_servizi_simili, valore_annuo
 from app.services.storico import storico_servizio
 from app.services.occorrenze import (
     ETICHETTE_STATO_CONTRATTO,
@@ -322,26 +323,38 @@ def _valida(
 # Routes
 # ---------------------------------------------------------------------------
 
-@router.get("")
-def lista_servizi(
-    request: Request,
-    cliente: str | None = None,
-    referente: str | None = None,
-    stato: str | None = None,
-    q: str | None = None,
-    db: Session = Depends(get_db),
-    user: Utente = Depends(require_login),
-):
-    # Normalise the raw query params into typed/validated filter values.
+def _normalizza_filtri(
+    cliente: str | None, referente: str | None, stato: str | None, q: str | None
+) -> tuple[int | None, str | None, str | None, str]:
+    """Turn the raw query params into typed, validated filter values.
+
+    Anything unrecognised is dropped rather than rejected: these arrive from
+    links and bookmarks, and a stale value should mean "no filter", not an
+    error page.
+    """
     cliente_id = int(cliente) if (cliente and cliente.isdigit()) else None
     referente_val = referente.strip() if referente and referente.strip() else None
     stato_val = stato if stato in STATI_CONTRATTO else None
-    ricerca = (q or "").strip()
+    return cliente_id, referente_val, stato_val, (q or "").strip()
 
-    # cliente/referente are SQL conditions on service columns; the contract
-    # state is NOT a column (only disdetto is — see stato_contratto), so it is
-    # filtered in Python after computing it per row, same pattern as the
-    # dashboard's occurrence-level state filter.
+
+def _righe_filtrate(
+    db: Session,
+    cliente_id: int | None,
+    referente_val: str | None,
+    stato_val: str | None,
+    ricerca: str,
+) -> list[tuple]:
+    """The services matching the filters, as the rows the list shows.
+
+    Shared by the page and by the PDF export, so the export is always exactly
+    what the page lists — two copies of this query would drift apart the first
+    time a filter is added to one and not the other.
+
+    cliente/referente/search are SQL conditions on service columns; the
+    contract state is NOT a column (only disdetto is — see stato_contratto),
+    so it is filtered in Python after computing it per row.
+    """
     query = (
         select(Servizio)
         .join(Servizio.cliente)
@@ -355,7 +368,6 @@ def lista_servizi(
     for condizione in condizioni_ricerca(ricerca):
         query = query.where(condizione)
 
-    servizi = db.scalars(query).all()
     oggi = date.today()
     # Each row carries a human-readable cadence label (mensile/trimestrale/...),
     # the date the contract next comes due (NOT the stored data_scadenza, which
@@ -364,10 +376,25 @@ def lista_servizi(
     righe = [
         (s, etichetta_cadenza(s.cadenza_mesi), prossima_scadenza(s, oggi),
          stato_contratto(s, oggi=oggi))
-        for s in servizi
+        for s in db.scalars(query).all()
     ]
     if stato_val is not None:
         righe = [r for r in righe if r[3] == stato_val]
+    return righe
+
+
+@router.get("")
+def lista_servizi(
+    request: Request,
+    cliente: str | None = None,
+    referente: str | None = None,
+    stato: str | None = None,
+    q: str | None = None,
+    db: Session = Depends(get_db),
+    user: Utente = Depends(require_login),
+):
+    cliente_id, referente_val, stato_val, ricerca = _normalizza_filtri(cliente, referente, stato, q)
+    righe = _righe_filtrate(db, cliente_id, referente_val, stato_val, ricerca)
 
     contesto = {
         "user": user,
@@ -394,6 +421,64 @@ def lista_servizi(
         else "servizi/lista.html"
     )
     return templates.TemplateResponse(request, template, contesto)
+
+
+@router.get("/export/pdf")
+def export_pdf(
+    cliente: str | None = None,
+    referente: str | None = None,
+    stato: str | None = None,
+    q: str | None = None,
+    nascondi: str | None = None,
+    db: Session = Depends(get_db),
+    user: Utente = Depends(require_login),
+):
+    """The services list as it is on screen, as a PDF grouped by customer.
+
+    Same filters as the page, through the same _righe_filtrate. ``nascondi``
+    carries the "nascondi scaduti e disdetti" display preference: it lives in
+    the browser (localStorage), so the server only knows about it because
+    app.js adds it to the link — without it the PDF would contain rows the
+    user was not looking at.
+    """
+    cliente_id, referente_val, stato_val, ricerca = _normalizza_filtri(cliente, referente, stato, q)
+    righe = _righe_filtrate(db, cliente_id, referente_val, stato_val, ricerca)
+    if nascondi == "1":
+        righe = [r for r in righe if r[3] not in ("scaduto", "disdetto")]
+
+    # Grouped by customer like the riepilogo, customers alphabetical; inside a
+    # group by description then referente, so identical contracts (the
+    # fifteen "Sentinel One") sit together and read in the referente's order.
+    gruppi: dict[int, GruppoServiziPdf] = {}
+    for s, cadenza, prossima, _stato in righe:
+        gruppo = gruppi.setdefault(s.cliente_id, GruppoServiziPdf(cliente=s.cliente))
+        gruppo.righe.append(RigaServizioPdf(s, cadenza, prossima, valore_annuo(s)))
+    ordinati = sorted(gruppi.values(), key=lambda g: g.cliente.nome.casefold())
+    for g in ordinati:
+        g.righe.sort(key=lambda r: (r.servizio.descrizione.casefold(),
+                                    (r.servizio.referente or "").casefold()))
+
+    # What was applied, spelled out on the document.
+    filtri_letti = []
+    if cliente_id is not None:
+        c = db.get(Cliente, cliente_id)
+        filtri_letti.append(f"Cliente: {c.nome if c else cliente_id}")
+    if referente_val:
+        filtri_letti.append(f"Referente: {referente_val}")
+    if stato_val:
+        filtri_letti.append(f"Stato: {ETICHETTE_STATO_CONTRATTO[stato_val]}")
+    if ricerca:
+        filtri_letti.append(f"Ricerca: {ricerca}")
+    if nascondi == "1":
+        filtri_letti.append("esclusi scaduti e disdetti")
+
+    oggi = date.today()
+    contenuto = genera_pdf_servizi(ordinati, filtri_letti, oggi)
+    return Response(
+        content=contenuto,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="servizi_{oggi.isoformat()}.pdf"'},
+    )
 
 
 @router.get("/nuovo")

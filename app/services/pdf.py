@@ -1,7 +1,11 @@
 """
-PDF generation for the billing summary — one document per customer, meant to
-be handed to that customer (or their referente) as a billing recap for the
-month.
+PDF generation.
+
+- ``genera_pdf_cliente``: the billing summary, one document per customer,
+  meant to be handed to that customer (or their referente) as a billing recap
+  for the month.
+- ``genera_pdf_servizi``: the services list as filtered on screen, grouped by
+  customer, with each contract's value over a year and the totals.
 
 Built with fpdf2 (pure Python, no OS-level dependencies), consistent with the
 project's "no build step" philosophy. Core PDF fonts (Helvetica) only support
@@ -10,8 +14,14 @@ EUR"), not a currency symbol — matching the CSV export.
 """
 from __future__ import annotations
 
+from dataclasses import dataclass, field
+from datetime import date
+from decimal import Decimal
+
 from fpdf import FPDF
 
+from app.models.cliente import Cliente
+from app.models.servizio import Servizio
 from app.services.riepilogo import GruppoCliente
 
 # Core PDF fonts (Helvetica) can only encode Latin-1, and fpdf2 refuses the
@@ -139,4 +149,138 @@ def genera_pdf_cliente(gruppo: GruppoCliente, etichetta_mese: str) -> bytes:
     pdf.cell(larghezza_label, 8, "Subtotale", border=1, align="R")
     pdf.cell(_COLONNE[-1][1], 8, f"{gruppo.subtotale:.2f}", border=1, align="R")
 
+    return bytes(pdf.output())
+
+
+# ---------------------------------------------------------------------------
+# Services list
+# ---------------------------------------------------------------------------
+
+# Same 190mm budget as above. The per-occurrence total is left out on purpose:
+# importo and quantità are both on the row, and the column that can be summed
+# across contracts with different cadences is the annual value.
+_COLONNE_SERVIZI = [
+    ("Descrizione", 42, "L"),
+    ("Referente", 40, "L"),
+    ("Scadenza", 20, "L"),
+    ("Cadenza", 22, "L"),
+    ("Qtà", 10, "R"),
+    ("Importo unit.", 26, "R"),
+    ("Valore annuo", 30, "R"),
+]
+
+
+@dataclass
+class RigaServizioPdf:
+    servizio: Servizio
+    cadenza: str
+    prossima: date
+    valore_annuo: Decimal | None   # None for a cancelled contract
+
+
+@dataclass
+class GruppoServiziPdf:
+    cliente: Cliente
+    righe: list[RigaServizioPdf] = field(default_factory=list)
+
+    def subtotali(self) -> dict[str, Decimal]:
+        """Annual value per currency: summing EUR and USD into one figure
+        would be a number in no currency at all."""
+        totali: dict[str, Decimal] = {}
+        for r in self.righe:
+            if r.valore_annuo is not None:
+                valuta = r.servizio.valuta
+                totali[valuta] = totali.get(valuta, Decimal("0")) + r.valore_annuo
+        return totali
+
+
+def _importi(totali: dict[str, Decimal]) -> str:
+    if not totali:
+        return "-"
+    return "  ".join(f"{v:.2f} {k}" for k, v in sorted(totali.items()))
+
+
+def genera_pdf_servizi(
+    gruppi: list[GruppoServiziPdf], filtri: list[str], generato_il: date
+) -> bytes:
+    """Render the filtered services list, grouped by customer, as a PDF.
+
+    ``filtri`` are human-readable descriptions of what was applied ("Cliente:
+    Beta Memory", "Ricerca: sentinel"...): a list printed without saying how
+    it was narrowed reads as the complete portfolio.
+    """
+    pdf = _PDF(orientation="P", unit="mm", format="A4")
+    pdf.set_auto_page_break(auto=True, margin=15)
+    pdf.add_page()
+
+    pdf.set_font("Helvetica", "B", 16)
+    pdf.cell(0, 10, "Servizi", new_x="LMARGIN", new_y="NEXT")
+    pdf.set_font("Helvetica", "", 10)
+    pdf.cell(0, 6, f"Generato il {generato_il.strftime('%d/%m/%Y')}", new_x="LMARGIN", new_y="NEXT")
+    pdf.multi_cell(
+        0, 6,
+        "Filtri: " + ("; ".join(filtri) if filtri else "nessuno (tutti i servizi)"),
+        new_x="LMARGIN", new_y="NEXT",
+    )
+    pdf.ln(3)
+
+    if not gruppi:
+        pdf.set_font("Helvetica", "I", 11)
+        pdf.cell(0, 8, "Nessun servizio corrisponde ai filtri.", new_x="LMARGIN", new_y="NEXT")
+        return bytes(pdf.output())
+
+    larghezza_label = sum(l for _, l, _a in _COLONNE_SERVIZI[:-1])
+    larghezza_valore = _COLONNE_SERVIZI[-1][1]
+    totale: dict[str, Decimal] = {}
+
+    for gruppo in gruppi:
+        pdf.set_font("Helvetica", "B", 12)
+        pdf.cell(0, 8, gruppo.cliente.nome, new_x="LMARGIN", new_y="NEXT")
+
+        pdf.set_font("Helvetica", "B", 9)
+        pdf.set_fill_color(230, 230, 230)
+        for intestazione, larghezza, allineamento in _COLONNE_SERVIZI:
+            pdf.cell(larghezza, 7, intestazione, border=1, fill=True, align=allineamento)
+        pdf.ln()
+
+        pdf.set_font("Helvetica", "", 9)
+        for riga in gruppo.righe:
+            s = riga.servizio
+            descrizione = s.descrizione + (" (disdetto)" if s.disdetto else "")
+            valori = [
+                descrizione,
+                s.referente or "-",
+                riga.prossima.strftime("%d/%m/%Y"),
+                riga.cadenza,
+                str(s.quantita),
+                f"{s.importo:.2f} {s.valuta}",
+                f"{riga.valore_annuo:.2f} {s.valuta}" if riga.valore_annuo is not None else "-",
+            ]
+            for valore, (_, larghezza, allineamento) in zip(valori, _COLONNE_SERVIZI):
+                pdf.cell(larghezza, 7, _tronca(pdf, valore, larghezza),
+                         border=1, align=allineamento)
+            pdf.ln()
+
+        subtotali = gruppo.subtotali()
+        for valuta, importo in subtotali.items():
+            totale[valuta] = totale.get(valuta, Decimal("0")) + importo
+        pdf.set_font("Helvetica", "B", 9)
+        pdf.cell(larghezza_label, 7, f"Subtotale annuo {gruppo.cliente.nome}", border=1, align="R")
+        pdf.cell(larghezza_valore, 7, _tronca(pdf, _importi(subtotali), larghezza_valore),
+                 border=1, align="R")
+        pdf.ln(10)
+
+    pdf.set_font("Helvetica", "B", 11)
+    pdf.cell(larghezza_label, 9, "Totale annuo", border=1, align="R")
+    pdf.cell(larghezza_valore, 9, _tronca(pdf, _importi(totale), larghezza_valore),
+             border=1, align="R")
+    pdf.ln(12)
+
+    pdf.set_font("Helvetica", "I", 8)
+    pdf.multi_cell(
+        0, 4,
+        "Valore annuo: importo unitario x quantità riportati a 12 mesi "
+        "(un servizio mensile conta 12 volte, un trimestrale 4, un triennale un terzo). "
+        "I contratti disdetti sono elencati ma non contribuiscono ai totali.",
+    )
     return bytes(pdf.output())

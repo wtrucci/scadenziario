@@ -15,6 +15,8 @@ single one of them and train the user to click through the warning.
 """
 from __future__ import annotations
 
+from decimal import ROUND_HALF_UP, Decimal
+
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -44,3 +46,22 @@ def trova_servizi_simili(
         s for s in db.scalars(query.order_by(Servizio.data_scadenza))
         if _chiave(s.descrizione, s.referente) == chiave
     ]
+
+
+def valore_annuo(servizio: Servizio) -> Decimal | None:
+    """What the service is worth over twelve months.
+
+    importo × quantità is the amount of ONE occurrence, and occurrences come
+    every cadenza_mesi months: a monthly 2.75 × 12 is 33 per occurrence but
+    396 a year. Summing per-occurrence totals across a mixed list adds a
+    monthly fee to a yearly one and gives a number that belongs to no period
+    at all, so every total that spans services is built on this instead.
+
+    None for a cancelled contract: it will not be invoiced again, so it is
+    worth nothing going forward — and None (shown as "—") says that more
+    honestly than a 0.00 that looks like a free contract.
+    """
+    if servizio.disdetto or servizio.cadenza_mesi < 1:
+        return None
+    annuo = servizio.importo * servizio.quantita * Decimal(12) / Decimal(servizio.cadenza_mesi)
+    return annuo.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)

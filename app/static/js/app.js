@@ -481,3 +481,17 @@ document.addEventListener("click", function (e) {
     var dialog = bottone.closest("dialog");
     if (dialog) dialog.close();
 });
+
+// "PDF" button on the services page: export exactly what is on screen. The
+// filters live in the URL, kept current by hx-push-url as they change, so the
+// link is built at click time rather than when the page loaded. The "nascondi
+// scaduti e disdetti" preference lives only here in the browser, so it is
+// added explicitly — the server has no other way to know about it.
+document.addEventListener("click", function (e) {
+    var link = e.target.closest("[data-export-pdf]");
+    if (!link) return;
+    var parametri = new URLSearchParams(window.location.search);
+    if (nascondiScadutiAttivo()) parametri.set("nascondi", "1");
+    var query = parametri.toString();
+    link.href = "/servizi/export/pdf" + (query ? "?" + query : "");
+});

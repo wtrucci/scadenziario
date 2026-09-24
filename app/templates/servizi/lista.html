@@ -31,6 +31,11 @@
                    aria-label="Cerca fra i servizi">
         </form>
         <span id="filtri-reset">{% if filtri_attivi %}<a class="btn btn-secondary" href="/servizi">Azzera filtri</a>{% endif %}</span>
+        {# The href is only a fallback: app.js rebuilds it on click from the
+           current URL (filters change via HTMX without a reload) plus the
+           "nascondi scaduti" preference, which only the browser knows. #}
+        <a class="btn btn-secondary" href="/servizi/export/pdf" data-export-pdf
+           title="Esporta in PDF i servizi mostrati, con il valore annuo">PDF</a>
         <a class="btn" href="/servizi/nuovo">+ Nuovo servizio</a>
     </div>
 </div>
