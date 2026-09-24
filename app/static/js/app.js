@@ -27,6 +27,9 @@ document.addEventListener("htmx:afterSwap", function (e) { initDatePickers(e.tar
 // filter already triggers the HTMX request via hx-trigger="change" on
 // the form: this just closes the dialog afterwards so the (already
 // updating) results are immediately visible.
+// Only for .filtri-dialog: a dialog with fields to fill in (.dialog-modulo)
+// would close the moment a field loses focus — which is exactly how the
+// "nuovo cliente" dialog once swallowed the click on its own save button.
 document.addEventListener("change", function (e) {
     var dialog = e.target.closest("dialog.filtri-dialog");
     if (dialog) dialog.close();

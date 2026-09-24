@@ -342,9 +342,15 @@ a.icon-btn { text-decoration: none; }
     border: 2px solid var(--surface);
 }
 
-/* Filter dialog: native <dialog>, opened by the funnel icon. The browser
-   handles the backdrop, centering and Esc-to-close for free. */
-dialog.filtri-dialog {
+/* Dialogs: native <dialog>. The browser handles the backdrop, centering and
+   Esc-to-close for free.
+   .filtri-dialog (funnel icon) and .dialog-modulo (small forms such as "nuovo
+   cliente") share the LOOK only. .filtri-dialog also carries a behaviour —
+   app.js closes it on the first change, because every control in it is a
+   filter that applies itself — so a dialog holding a form to fill in must
+   never use that class: it would close as soon as a field lost focus. */
+dialog.filtri-dialog,
+dialog.dialog-modulo {
     width: 100%;
     max-width: 380px;
     padding: 1.5rem;
@@ -355,7 +361,11 @@ dialog.filtri-dialog {
     box-shadow: 0 10px 40px rgba(0, 0, 0, 0.25);
 }
 
-dialog.filtri-dialog::backdrop { background: rgba(0, 0, 0, 0.5); }
+dialog.filtri-dialog::backdrop,
+dialog.dialog-modulo::backdrop { background: rgba(0, 0, 0, 0.5); }
+
+.dialog-modulo .field { width: 100%; }
+.dialog-modulo h3 { margin-top: 0; }
 
 .filtri-dialog .filtri { flex-direction: column; align-items: stretch; gap: 1rem; }
 .filtri-dialog .field { width: 100%; }

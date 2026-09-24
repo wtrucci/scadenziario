@@ -249,7 +249,7 @@
 
 {# Outside the service form on purpose: forms cannot be nested, and the inner
    one would otherwise submit the whole service. #}
-<dialog id="nuovo-cliente-dialog" class="filtri-dialog">
+<dialog id="nuovo-cliente-dialog" class="dialog-modulo">
     <h3>Nuovo cliente</h3>
     <form hx-post="/clienti/rapido" hx-target="#nuovo-cliente-corpo" hx-swap="innerHTML">
         <div id="nuovo-cliente-corpo">

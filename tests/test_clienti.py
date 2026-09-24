@@ -228,6 +228,16 @@ class TestRotteClienti(unittest.TestCase):
         # The dialog form must not be nested inside the service form.
         self.assertLess(h.index("</form>"), h.index('id="nuovo-cliente-dialog"'))
 
+    def test_la_finestra_nuovo_cliente_non_e_una_finestra_filtri(self):
+        """app.js closes every dialog.filtri-dialog on the first change event.
+        On a dialog with a field to fill in, that fires when the field loses
+        focus — i.e. when the user clicks "Crea cliente" — and swallowed the
+        click: the request never left. Found only by driving a real browser."""
+        import re
+        h = self.client.get("/servizi/nuovo").text
+        tag = re.search(r'<dialog id="nuovo-cliente-dialog"[^>]*>', h).group(0)
+        self.assertNotIn("filtri-dialog", tag)
+
     # --- database safety net ---------------------------------------------
 
     def test_indice_unico_blocca_il_duplicato_scritto_a_mano(self):
