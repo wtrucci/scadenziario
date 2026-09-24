@@ -14,6 +14,39 @@ from fpdf import FPDF
 
 from app.services.riepilogo import GruppoCliente
 
+# Core PDF fonts (Helvetica) can only encode Latin-1, and fpdf2 refuses the
+# whole document when one character falls outside it. Text typed on a phone
+# or a Mac, or pasted from Word, carries typographic characters Latin-1 does
+# not have — a referente "Atelier dell’auto" (curly apostrophe) was enough to
+# turn a customer's PDF into an error page. They get their plain equivalents;
+# anything else unrepresentable becomes "?", so one odd character costs one
+# odd character, never the document.
+_SOSTITUZIONI = str.maketrans({
+    "\u2018": "'", "\u2019": "'",      # ‘ ’
+    "\u201c": '"', "\u201d": '"',      # “ ”
+    "\u2013": "-", "\u2014": "-",      # – —
+    "\u2026": "...",                   # …
+    "\u20ac": "EUR",                   # €
+    "\u00a0": " ",                     # non-breaking space
+})
+
+
+def _latin1(testo: str) -> str:
+    return testo.translate(_SOSTITUZIONI).encode("latin-1", "replace").decode("latin-1")
+
+
+class _PDF(FPDF):
+    """FPDF whose text always fits the core fonts.
+
+    normalize_text is the one place fpdf2 routes every string through —
+    cells, titles, and get_string_width used by _tronca to measure — so
+    cleaning it here covers every call, including ones added later.
+    """
+
+    def normalize_text(self, text: str) -> str:
+        return super().normalize_text(_latin1(text))
+
+
 # Column widths (mm) for the occurrence table, summing to the usable page
 # width (A4 minus the default 10mm margins on each side = 190mm).
 # Referente gets the widest text column: on a reseller's summary the customer
@@ -53,7 +86,7 @@ def _tronca(pdf: FPDF, testo: str, larghezza: float) -> str:
 def genera_pdf_cliente(gruppo: GruppoCliente, etichetta_mese: str) -> bytes:
     """Render one customer's occurrences for the month as a PDF, bytes-ready
     for a Response body."""
-    pdf = FPDF(orientation="P", unit="mm", format="A4")
+    pdf = _PDF(orientation="P", unit="mm", format="A4")
     pdf.set_auto_page_break(auto=True, margin=15)
     pdf.add_page()
 
