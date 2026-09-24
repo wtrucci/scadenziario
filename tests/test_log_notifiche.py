@@ -159,3 +159,84 @@ class TestLogNotifiche(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestInvioProva(unittest.TestCase):
+    """The "Invia messaggio di prova" button on the notifiche page.
+
+    invia_telegram is replaced by a stand-in: the test must never send a real
+    message, and what matters here is how the page reports each outcome.
+    """
+
+    def setUp(self):
+        from unittest.mock import patch
+
+        from fastapi.testclient import TestClient
+
+        from app.database import get_db
+        from app.dependencies import require_login
+        from app.main import app
+
+        self.engine = create_engine(
+            "sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool
+        )
+        Base.metadata.create_all(self.engine)
+        self.SessionLocal = sessionmaker(bind=self.engine)
+
+        def override_get_db():
+            db = self.SessionLocal()
+            try:
+                yield db
+            finally:
+                db.close()
+
+        self.app = app
+        app.dependency_overrides[get_db] = override_get_db
+        app.dependency_overrides[require_login] = lambda: SimpleNamespace(username="walter")
+        self.client = TestClient(app)
+        self.patch = patch
+        self.inviati = []
+
+    def tearDown(self):
+        self.app.dependency_overrides.clear()
+        self.engine.dispose()
+
+    def _invia(self, esito, dettaglio=None):
+        def finto(testo):
+            self.inviati.append(testo)
+            return esito, dettaglio
+        with self.patch("app.routes.notifiche.invia_telegram", finto):
+            return self.client.post("/notifiche/test")
+
+    def test_successo(self):
+        r = self._invia(True)
+        self.assertEqual(r.status_code, 200)
+        self.assertIn("Messaggio di prova inviato", r.text)
+
+    def test_errore_mostra_il_motivo(self):
+        r = self._invia(False, "HTTP 401: Unauthorized")
+        self.assertIn("Invio non riuscito", r.text)
+        self.assertIn("HTTP 401: Unauthorized", r.text)
+        self.assertIn("TELEGRAM_BOT_TOKEN", r.text)
+
+    def test_configurazione_mancante(self):
+        r = self._invia(False, "TELEGRAM_BOT_TOKEN o TELEGRAM_CHAT_ID non configurati")
+        self.assertIn("non configurati", r.text)
+
+    def test_il_messaggio_si_presenta_come_prova(self):
+        self._invia(True)
+        self.assertEqual(len(self.inviati), 1)
+        self.assertIn("prova", self.inviati[0])
+        self.assertIn("walter", self.inviati[0])
+
+    def test_la_prova_non_finisce_nel_log(self):
+        self._invia(True)
+        db = self.SessionLocal()
+        try:
+            self.assertEqual(db.query(NotificaLog).count(), 0)
+        finally:
+            db.close()
+
+    def test_il_pulsante_e_nella_pagina(self):
+        h = self.client.get("/notifiche").text
+        self.assertIn('hx-post="/notifiche/test"', h)

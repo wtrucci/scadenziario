@@ -677,6 +677,28 @@ tr.stato-nascosto { display: none; }
     outline-offset: 1px;
 }
 
+/* Outcome of the Telegram test message (notifiche page). Colours reuse the
+   theme's ok/error variables, so both follow the light/dark switch. */
+.esito-test {
+    margin: 0 0 1rem;
+    padding: 0.6rem 0.9rem;
+    border-radius: 6px;
+    font-size: 0.9rem;
+    max-width: 720px;
+}
+
+.esito-test-ok {
+    background: var(--ok-bg);
+    border: 1px solid var(--ok-text);
+    color: var(--ok-text);
+}
+
+.esito-test-errore {
+    background: var(--error-bg);
+    border: 1px solid var(--error-border);
+    color: var(--error-text);
+}
+
 /* ------------------------------------------------------------------ Badges */
 
 .badge {

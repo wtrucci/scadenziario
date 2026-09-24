@@ -23,6 +23,7 @@ from app.models.cliente import Cliente
 from app.models.notifica_log import NotificaLog
 from app.models.servizio import Servizio
 from app.models.utente import Utente
+from app.services.notifiche import invia_telegram
 from app.templating import templates
 
 router = APIRouter(prefix="/notifiche")
@@ -123,3 +124,33 @@ def lista_notifiche(
         else "notifiche/lista.html"
     )
     return templates.TemplateResponse(request, template, contesto)
+
+
+@router.post("/test")
+def invia_prova(
+    request: Request,
+    user: Utente = Depends(require_login),
+):
+    """Send a test message through the real Telegram configuration (HTMX).
+
+    The only other way to find out that the token or chat id is wrong is to
+    wait for a real deadline and notice that no message arrived. This goes
+    through exactly the same function the scheduler uses, so a success here
+    means the scheduler's messages will get through too.
+
+    Not written to NotificaLog: that log is about services (every row points
+    to one), and a test would inflate the Inviate/Fallite counts with
+    something that is not a notification.
+    """
+    adesso = _in_locale(datetime.now(timezone.utc)).strftime("%d/%m/%Y %H:%M")
+    testo = (
+        "✅ Scadenziario — messaggio di prova.\n"
+        "Se lo stai leggendo, la configurazione Telegram funziona.\n"
+        f"Inviato da {user.username} il {adesso} (v{settings.APP_VERSION})."
+    )
+    esito, dettaglio = invia_telegram(testo)
+    return templates.TemplateResponse(
+        request,
+        "notifiche/_esito_test.html",
+        {"esito": esito, "dettaglio": dettaglio, "adesso": adesso},
+    )

@@ -1,0 +1,14 @@
+{# Outcome of the Telegram test message, swapped in under the button.
+   Context: esito (bool), dettaglio (error text or None), adesso (when). #}
+{% if esito %}
+<div class="esito-test esito-test-ok" role="status">
+    <strong>Messaggio di prova inviato</strong> alle {{ adesso }}. Controlla che
+    sia arrivato nella chat Telegram configurata.
+</div>
+{% else %}
+<div class="esito-test esito-test-errore" role="alert">
+    <strong>Invio non riuscito.</strong> {{ dettaglio }}
+    <br><span class="muted">Controlla <code>TELEGRAM_BOT_TOKEN</code> e
+    <code>TELEGRAM_CHAT_ID</code> nel file <code>.env</code>, poi riavvia il container.</span>
+</div>
+{% endif %}

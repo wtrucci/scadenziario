@@ -16,8 +16,18 @@
                    placeholder="Cerca cliente, servizio, errore…" aria-label="Cerca fra le notifiche">
         </form>
         <span id="ricerca-reset">{% if filtri.q or filtri.esito %}<a class="btn btn-secondary" href="/notifiche">Azzera</a>{% endif %}</span>
+        {# hx-disabled-elt: one click, one message — a double click would send
+           two, and the second would look like a bug. #}
+        <button type="button" class="btn btn-secondary"
+                hx-post="/notifiche/test" hx-target="#esito-test" hx-swap="innerHTML"
+                hx-disabled-elt="this"
+                title="Invia un messaggio di prova con la configurazione Telegram attuale">
+            Invia messaggio di prova
+        </button>
     </div>
 </div>
+
+<div id="esito-test" aria-live="polite"></div>
 
 <div id="risultati">
     {% include "notifiche/_risultati.html" %}
