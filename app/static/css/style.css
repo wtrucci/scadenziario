@@ -798,6 +798,23 @@ tr.stato-nascosto { display: none; }
     min-width: 0;
 }
 
+/* Services list: the icon marking a row that has notes (shown in full as a
+   tooltip on the row), and the serial number, set in a monospace face so
+   characters that look alike in a serial (0/O, 1/l) can be told apart. */
+.icon-nota {
+    width: 14px;
+    height: 14px;
+    margin-left: 0.1rem;
+    vertical-align: -2px;
+    color: var(--muted);
+}
+
+.col-seriale {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.85rem;
+    white-space: nowrap;
+}
+
 /* ------------------------------------------------------------------ Badges */
 
 .badge {

@@ -62,17 +62,67 @@ document.addEventListener("DOMContentLoaded", function () {
 // in the riepilogo) sort independently.
 var ORDINAMENTO_KEY_PREFIX = "scadenziario:ordinamento:";
 
-function leggiOrdinamento(tableId) {
+// Table preferences (hidden columns, sort column) are saved by column NAME,
+// the label shown in the header. Until 0.9.1 they were saved by POSITION,
+// and adding a column anywhere but the end shifted every choice after it: a
+// user who had hidden "Cadenza" would find the neighbouring column hidden
+// instead. Names survive new columns; renaming a header only makes that one
+// column visible again, which is a harmless way to fail.
+function nomeColonna(th, i) {
+    // The label is normally the th's own text nodes (skipping the gear
+    // button and any other markup), but a header that wraps its label in
+    // .th-label (to control where the sort arrow lands) has no bare text
+    // node — read that span instead.
+    var etichetta = th.querySelector(".th-label");
+    var testo = etichetta
+        ? etichetta.textContent.trim()
+        : th.childNodes.length
+            ? Array.prototype.map.call(th.childNodes, function (n) {
+                  return n.nodeType === Node.TEXT_NODE ? n.textContent : "";
+              }).join("").trim()
+            : th.textContent.trim();
+    return testo || "Colonna " + (i + 1);
+}
+
+function nomiColonne(tabella) {
+    return Array.prototype.map.call(tabella.tHead.rows[0].children, nomeColonna);
+}
+
+// Translates a position saved by 0.9.1 or earlier into a column name. Those
+// positions were counted on the table as it was then, so columns added since
+// (marked data-col-nuova in the template) are left out of the count. Once
+// every browser has loaded the page after the update the old data is gone
+// and the marker can be dropped.
+function nomeDaPosizioneVecchia(tabella, indice) {
+    var vecchie = Array.prototype.filter.call(tabella.tHead.rows[0].children, function (th) {
+        return !th.hasAttribute("data-col-nuova");
+    });
+    var th = vecchie[indice];
+    return th ? nomeColonna(th, indice) : null;
+}
+
+function leggiOrdinamento(tabella) {
+    var tableId = tabella.getAttribute("data-table-id");
     try {
         var raw = localStorage.getItem(ORDINAMENTO_KEY_PREFIX + tableId);
-        return raw ? JSON.parse(raw) : null;
+        if (!raw) return null;
+        var salvato = JSON.parse(raw);
+        if (typeof salvato.indice === "number") {        // saved by 0.9.1 or earlier
+            var nome = nomeDaPosizioneVecchia(tabella, salvato.indice);
+            if (!nome) return null;
+            salvato = { colonna: nome, crescente: salvato.crescente };
+            localStorage.setItem(ORDINAMENTO_KEY_PREFIX + tableId, JSON.stringify(salvato));
+        }
+        return salvato;
     } catch (e) {
         return null;
     }
 }
 
-function salvaOrdinamento(tableId, indice, crescente) {
-    localStorage.setItem(ORDINAMENTO_KEY_PREFIX + tableId, JSON.stringify({ indice: indice, crescente: crescente }));
+function salvaOrdinamento(tabella, indice, crescente) {
+    var nome = nomiColonne(tabella)[indice];
+    localStorage.setItem(ORDINAMENTO_KEY_PREFIX + tabella.getAttribute("data-table-id"),
+                         JSON.stringify({ colonna: nome, crescente: crescente }));
 }
 
 // A cell can carry data-sort (e.g. an ISO date) to sort by a value
@@ -166,7 +216,7 @@ document.addEventListener("click", function (e) {
     ordinaTabella(tabella, th, crescente);
 
     if (tabella.hasAttribute("data-table-id")) {
-        salvaOrdinamento(tabella.getAttribute("data-table-id"), indice, crescente);
+        salvaOrdinamento(tabella, indice, crescente);
         // Re-sync pagination: row order changed, so which rows fall on
         // which page changed too. Back to page 1 on a fresh sort.
         tabella._paginaCorrente = 1;
@@ -180,9 +230,9 @@ document.addEventListener("click", function (e) {
 function applicaOrdinamento(tabella) {
     var tableId = tabella.getAttribute("data-table-id");
     if (!tableId || !tabella.tHead) return;
-    var ordinamento = leggiOrdinamento(tableId);
+    var ordinamento = leggiOrdinamento(tabella);
     if (!ordinamento) return;
-    var th = tabella.tHead.rows[0].children[ordinamento.indice];
+    var th = tabella.tHead.rows[0].children[nomiColonne(tabella).indexOf(ordinamento.colonna)];
     if (!th || !th.classList.contains("sortable")) return;
     ordinaTabella(tabella, th, ordinamento.crescente);
 }
@@ -200,17 +250,34 @@ var COLONNE_KEY_PREFIX = "scadenziario:colonneNascoste:";
 var PAGE_SIZE_KEY = "scadenziario:righePerPagina";
 var PAGE_SIZES = [10, 50, 100];
 
-function colonneNascoste(tableId) {
+// Positions (0-based) of the hidden columns of this table. Stored as names
+// (see nomeColonna), handed out as positions because that is what the code
+// that shows and hides cells works with.
+function colonneNascoste(tabella) {
+    var tableId = tabella.getAttribute("data-table-id");
     try {
         var raw = localStorage.getItem(COLONNE_KEY_PREFIX + tableId);
-        return raw ? JSON.parse(raw) : [];
+        var salvate = raw ? JSON.parse(raw) : [];
+        if (salvate.some(function (v) { return typeof v === "number"; })) {
+            // Saved by 0.9.1 or earlier: convert once, keeping the user's choice.
+            salvate = salvate
+                .map(function (i) { return nomeDaPosizioneVecchia(tabella, i); })
+                .filter(function (n) { return n; });
+            localStorage.setItem(COLONNE_KEY_PREFIX + tableId, JSON.stringify(salvate));
+        }
+        var nomi = nomiColonne(tabella);
+        return salvate
+            .map(function (n) { return nomi.indexOf(n); })
+            .filter(function (i) { return i !== -1; });
     } catch (e) {
         return [];
     }
 }
 
-function salvaColonneNascoste(tableId, indici) {
-    localStorage.setItem(COLONNE_KEY_PREFIX + tableId, JSON.stringify(indici));
+function salvaColonneNascoste(tabella, indici) {
+    var nomi = nomiColonne(tabella);
+    localStorage.setItem(COLONNE_KEY_PREFIX + tabella.getAttribute("data-table-id"),
+                         JSON.stringify(indici.map(function (i) { return nomi[i]; })));
 }
 
 function righePerPaginaCorrente() {
@@ -221,7 +288,7 @@ function righePerPaginaCorrente() {
 function applicaColonne(tabella) {
     var tableId = tabella.getAttribute("data-table-id");
     if (!tableId || !tabella.tHead) return;
-    var nascoste = colonneNascoste(tableId);
+    var nascoste = colonneNascoste(tabella);
     var righeIntestazione = Array.prototype.slice.call(tabella.tHead.rows);
     righeIntestazione.forEach(function (tr) {
         Array.prototype.forEach.call(tr.children, function (th, i) {
@@ -240,7 +307,7 @@ function applicaColonne(tabella) {
 function apriDialogoColonne(tabella) {
     var tableId = tabella.getAttribute("data-table-id");
     var headerRow = tabella.tHead.rows[0];
-    var nascoste = colonneNascoste(tableId);
+    var nascoste = colonneNascoste(tabella);
 
     var dialog = document.createElement("dialog");
     dialog.className = "colonne-dialog";
@@ -252,19 +319,7 @@ function apriDialogoColonne(tabella) {
     Array.prototype.forEach.call(headerRow.children, function (th, i) {
         // Skip the column-picker button's own (usually label-less) cell.
         if (th.classList.contains("col-actions-header") && !th.firstChild.textContent.trim() && th.children.length <= 1) return;
-        // The label is normally the th's own text nodes (skipping the
-        // gear button and any other markup), but a header that wraps
-        // its label in .th-label (to control where the sort arrow
-        // lands) has no bare text node — read that span instead.
-        var etichetta = th.querySelector(".th-label");
-        var testo = etichetta
-            ? etichetta.textContent.trim()
-            : th.childNodes.length
-                ? Array.prototype.map.call(th.childNodes, function (n) {
-                      return n.nodeType === Node.TEXT_NODE ? n.textContent : "";
-                  }).join("").trim()
-                : th.textContent.trim();
-        if (!testo) testo = "Colonna " + (i + 1);
+        var testo = nomeColonna(th, i);
 
         var label = document.createElement("label");
         label.className = "colonna-opzione";
@@ -272,13 +327,13 @@ function apriDialogoColonne(tabella) {
         checkbox.type = "checkbox";
         checkbox.checked = nascoste.indexOf(i) === -1;
         checkbox.addEventListener("change", function () {
-            var attuali = colonneNascoste(tableId);
+            var attuali = colonneNascoste(tabella);
             if (checkbox.checked) {
                 attuali = attuali.filter(function (n) { return n !== i; });
             } else if (attuali.indexOf(i) === -1) {
                 attuali.push(i);
             }
-            salvaColonneNascoste(tableId, attuali);
+            salvaColonneNascoste(tabella, attuali);
             document.querySelectorAll('table[data-table-id="' + tableId + '"]').forEach(applicaColonne);
         });
         label.appendChild(checkbox);

@@ -20,6 +20,11 @@
             <th class="sortable">Referente</th>
             <th class="sortable">Sede</th>
             <th class="sortable">Descrizione</th>
+            {# data-col-nuova: this column did not exist when table preferences
+               were saved by position (0.9.1 and earlier); app.js leaves it out
+               when converting those, so nobody's hidden columns shift. It can
+               go once every browser has loaded the page after the update. #}
+            <th class="sortable" data-col-nuova>Seriale</th>
             <th class="sortable">Tipo</th>
             <th class="sortable">Scadenza</th>
             <th class="sortable">Cadenza</th>

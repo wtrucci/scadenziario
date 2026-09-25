@@ -144,3 +144,81 @@ class TestRicercaServizi(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestColonnaSerialeENote(unittest.TestCase):
+    """The services list shows the serial number and the notes on hover."""
+
+    def setUp(self):
+        from fastapi.testclient import TestClient
+
+        from app.database import get_db
+        from app.dependencies import require_login
+        from app.main import app
+
+        self.engine = create_engine(
+            "sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool
+        )
+        Base.metadata.create_all(self.engine)
+        self.SessionLocal = sessionmaker(bind=self.engine)
+        db = self.SessionLocal()
+        c = Cliente(nome="Sipro", attivo=True)
+        db.add(c)
+        db.flush()
+        comune = dict(cliente_id=c.id, tipo=TipoServizio.licenza, data_scadenza=date(2027, 7, 11),
+                      cadenza_mesi=12, importo=Decimal("530"), quantita=1, valuta="EUR",
+                      preavviso_giorni=30)
+        con_note = Servizio(descrizione="Fortigate 60F UTP", numero_seriale="FGT60FTK2209FTSZ",
+                            note='Rinnovo "da concordare"\nsede <Cherasco>', **comune)
+        senza = Servizio(descrizione="Fortigate 40F", **comune)
+        db.add_all([con_note, senza])
+        db.commit()
+        self.con_note_id, self.senza_id = con_note.id, senza.id
+        db.close()
+
+        def override_get_db():
+            db = self.SessionLocal()
+            try:
+                yield db
+            finally:
+                db.close()
+
+        self.app = app
+        app.dependency_overrides[get_db] = override_get_db
+        app.dependency_overrides[require_login] = lambda: SimpleNamespace(username="tester")
+        self.client = TestClient(app)
+
+    def tearDown(self):
+        self.app.dependency_overrides.clear()
+        self.engine.dispose()
+
+    def _riga(self, servizio_id: int) -> str:
+        import re
+        h = self.client.get("/servizi").text
+        return re.search(rf'<tr id="servizio-{servizio_id}"[^>]*>.*?</tr>', h, re.S).group(0)
+
+    def test_colonna_seriale_dopo_descrizione(self):
+        import re
+        h = self.client.get("/servizi").text
+        intestazioni = [re.sub(r"<[^>]+>|\s+", " ", t).strip()
+                        for t in re.findall(r"<th[^>]*>(.*?)</th>", h, re.S)]
+        self.assertEqual(intestazioni.index("Seriale"), intestazioni.index("Descrizione") + 1)
+
+    def test_colonna_nuova_marcata_per_la_conversione_delle_preferenze(self):
+        """Without data-col-nuova, preferences saved by position before 0.9.2
+        would be converted counting this column, and shift by one."""
+        self.assertRegex(self.client.get("/servizi").text, r"<th[^>]*data-col-nuova[^>]*>Seriale</th>")
+
+    def test_seriale_nella_riga(self):
+        self.assertIn("FGT60FTK2209FTSZ", self._riga(self.con_note_id))
+
+    def test_nota_come_tooltip_della_riga(self):
+        riga = self._riga(self.con_note_id)
+        # Escaped: quotes and angle brackets in a note must not break the markup.
+        self.assertIn('title="Rinnovo &#34;da concordare&#34;\nsede &lt;Cherasco&gt;"', riga)
+        self.assertIn("icon-nota", riga)
+
+    def test_senza_note_niente_tooltip_ne_icona(self):
+        riga = self._riga(self.senza_id)
+        self.assertNotIn("title=", riga.split(">")[0])
+        self.assertNotIn("icon-nota", riga)
