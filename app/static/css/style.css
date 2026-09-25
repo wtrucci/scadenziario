@@ -365,6 +365,9 @@ dialog.filtri-dialog::backdrop,
 dialog.dialog-modulo::backdrop { background: rgba(0, 0, 0, 0.5); }
 
 .dialog-modulo .field { width: 100%; }
+/* Buttons on the right, like "Chiudi" in the filter dialog: the two
+   dialogs sit side by side in daily use and should read the same. */
+.dialog-modulo .form-actions { justify-content: flex-end; margin-top: 1.25rem; }
 .dialog-modulo h3 { margin-top: 0; }
 
 .filtri-dialog .filtri { flex-direction: column; align-items: stretch; gap: 1rem; }
@@ -720,6 +723,77 @@ tr.stato-nascosto { display: none; }
 
 .field-con-azione select,
 .field-con-azione input {
+    flex: 1;
+    min-width: 0;
+}
+
+/* Tom Select (searchable dropdown, service form). Its own stylesheet ships
+   fixed colours; these rules re-dress it with the theme variables so it looks
+   like every other field and follows the light/dark switch. Our stylesheet is
+   loaded after the library's (see head_extra in base.html), so plain class
+   selectors are enough to win. */
+.ts-wrapper.single .ts-control,
+.ts-wrapper.single.input-active .ts-control,
+.ts-wrapper .ts-control {
+    padding: 0.5rem 0.65rem;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: var(--surface);
+    color: var(--text);
+    font-size: 0.95rem;
+    font-family: inherit;
+    box-shadow: none;
+    min-height: 0;
+}
+
+/* Must out-rank the .input-active selector above, or the focus ring
+   disappears exactly while the user is typing. */
+.ts-wrapper.focus .ts-control,
+.ts-wrapper.single.input-active.focus .ts-control {
+    border-color: var(--primary);
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--primary) 25%, transparent);
+}
+
+.ts-control input {
+    color: var(--text);
+    font-size: 0.95rem;
+    font-family: inherit;
+}
+
+.ts-control input::placeholder { color: var(--muted); }
+
+.ts-dropdown {
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: var(--surface);
+    color: var(--text);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+    font-size: 0.95rem;
+    margin-top: 2px;
+}
+
+.ts-dropdown .option,
+.ts-dropdown .no-results { padding: 0.45rem 0.65rem; }
+
+.ts-dropdown .active {
+    background: var(--badge-tipo-bg);
+    color: var(--badge-tipo-text);
+}
+
+.ts-dropdown .no-results { color: var(--muted); }
+
+/* The match inside each option: highlighted, but in theme colours. Same
+   selector as the library's own rule, which otherwise wins on specificity
+   and paints a light box behind the letters in dark mode. */
+.ts-dropdown [data-selectable] .highlight {
+    background: transparent;
+    color: inherit;
+    font-weight: 700;
+    text-decoration: underline;
+}
+
+/* Beside the "+" button, the control takes the room like the <select> did. */
+.field-con-azione .ts-wrapper {
     flex: 1;
     min-width: 0;
 }

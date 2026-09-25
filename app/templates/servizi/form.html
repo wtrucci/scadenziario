@@ -2,6 +2,16 @@
 
 {% block title %}{{ titolo }} — Scadenziario{% endblock %}
 
+{% block head_extra %}
+{# Tom Select: turns the customer <select> into a dropdown with a search box.
+   Only this page needs it, so only this page loads it. Pinned to an exact
+   version, like every CDN library here: an unpinned URL would change under
+   our feet. The <select> stays a real <select>, so the form posts exactly
+   what it posted before. #}
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/tom-select@2.6.2/dist/css/tom-select.min.css">
+<script src="https://cdn.jsdelivr.net/npm/tom-select@2.6.2/dist/js/tom-select.complete.min.js"></script>
+{% endblock %}
+
 {% block content %}
 <h1>{{ titolo }}</h1>
 
@@ -41,14 +51,16 @@
         {# The "+" opens a dialog to create the customer on the spot: leaving
            this form to add one would lose everything typed so far. #}
         <div class="field-con-azione">
-        <select id="cliente_id" name="cliente_id" required>
+        <select id="cliente_id" name="cliente_id" required data-ricerca>
             <option value="">— seleziona —</option>
+            {# The label is written with no whitespace around it on purpose:
+               Tom Select reads the option text verbatim, and a name wrapped in
+               newlines and indentation sorted before every clean name — so a
+               customer added with "+" landed at the bottom of the list. #}
             {% for c in clienti_attivi %}
             <option value="{{ c.id }}"
                 {% if valori.cliente_id == c.id|string %}selected{% endif %}
-                {% if not c.attivo %}class="muted"{% endif %}>
-                {{ c.nome }}{% if not c.attivo %} (inattivo){% endif %}
-            </option>
+                {% if not c.attivo %}class="muted"{% endif %}>{{ c.nome }}{% if not c.attivo %} (inattivo){% endif %}</option>
             {% endfor %}
         </select>
         <button type="button" class="icon-btn" title="Nuovo cliente" aria-label="Nuovo cliente"

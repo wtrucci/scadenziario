@@ -238,6 +238,26 @@ class TestRotteClienti(unittest.TestCase):
         tag = re.search(r'<dialog id="nuovo-cliente-dialog"[^>]*>', h).group(0)
         self.assertNotIn("filtri-dialog", tag)
 
+    def test_etichette_dei_clienti_senza_spazi_attorno(self):
+        """Tom Select reads the option text verbatim: a name wrapped in
+        newlines and indentation sorted before every clean name, so a customer
+        added with "+" landed at the bottom of the list instead of in place."""
+        import re
+        h = self.client.get("/servizi/nuovo").text
+        select = h[h.index('<select id="cliente_id"'):h.index("</select>", h.index('<select id="cliente_id"'))]
+        etichette = re.findall(r"<option[^>]*>(.*?)</option>", select, re.S)
+        self.assertTrue(etichette)
+        for testo in etichette:
+            self.assertEqual(testo, testo.strip(), f"etichetta con spazi attorno: {testo!r}")
+
+    def test_la_tendina_clienti_ha_la_ricerca(self):
+        h = self.client.get("/servizi/nuovo").text
+        self.assertRegex(h, r'<select id="cliente_id"[^>]*data-ricerca')
+        self.assertIn("tom-select@2.6.2", h)
+
+    def test_tom_select_solo_dove_serve(self):
+        self.assertNotIn("tom-select", self.client.get("/clienti").text)
+
     # --- database safety net ---------------------------------------------
 
     def test_indice_unico_blocca_il_duplicato_scritto_a_mano(self):

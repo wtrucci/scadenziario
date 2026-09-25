@@ -451,27 +451,65 @@ document.addEventListener("DOMContentLoaded", function () {
 });
 document.addEventListener("htmx:afterSwap", function (e) { initTabelleDati(e.target); });
 
+// Dropdowns with a search box: any <select data-ricerca> becomes a Tom Select
+// control (the library is loaded only by the pages that use it, hence the
+// guard). The <select> stays in the page and keeps being the value that is
+// posted; Tom Select only replaces what the user sees and types into.
+function initSelectRicerca(root) {
+    if (typeof TomSelect === "undefined") return;
+    root.querySelectorAll("select[data-ricerca]").forEach(function (el) {
+        if (el.tomselect) return;   // already enhanced (e.g. after an HTMX swap)
+        new TomSelect(el, {
+            create: false,
+            // Tom Select shows 50 options by default and silently drops the
+            // rest: with more customers than that, the ones past the 50th
+            // would be unreachable unless you happened to type their name.
+            maxOptions: null,
+            // Alphabetical, including a customer added later with the "+".
+            // This sorts on the option text exactly as written in the HTML,
+            // which is why the template keeps the labels free of whitespace.
+            sortField: [{ field: "text", direction: "asc" }],
+            placeholder: "— seleziona o cerca —",
+            // Accents do not matter when searching: "societa" finds "Società".
+            diacritics: true,
+        });
+    });
+}
+document.addEventListener("DOMContentLoaded", function () { initSelectRicerca(document); });
+document.addEventListener("htmx:afterSwap", function (e) { initSelectRicerca(e.target); });
+
 // "Nuovo cliente" dialog in the service form. POST /clienti/rapido answers a
 // successful save with an HX-Trigger header carrying the new customer's id
-// and name; here it joins the dropdown in alphabetical position and gets
-// selected, and the dialog closes. Nothing else in the service form is
-// touched, which is the whole point of creating the customer in place.
+// and name; here it joins the dropdown and gets selected, and the dialog
+// closes. Nothing else in the service form is touched, which is the whole
+// point of creating the customer in place.
 document.body.addEventListener("clienteCreato", function (e) {
     var select = document.getElementById("cliente_id");
     if (!select) return;
-    var nuovo = new Option(e.detail.nome, String(e.detail.id));
-    var prima = null;
-    for (var i = 0; i < select.options.length; i++) {
-        var opt = select.options[i];
-        if (opt.value === "") continue;   // keep "— seleziona —" on top
-        if (opt.text.localeCompare(e.detail.nome, "it", { sensitivity: "base" }) > 0) {
-            prima = opt;
-            break;
+    var id = String(e.detail.id);
+    if (select.tomselect) {
+        // With the search box on, the visible list is Tom Select's: adding the
+        // option to the hidden <select> alone would never show up.
+        select.tomselect.addOption({ value: id, text: e.detail.nome });
+        select.tomselect.setValue(id);
+        select.tomselect.close();
+    } else {
+        // Plain <select> (the library failed to load, e.g. CDN unreachable):
+        // insert in alphabetical position by hand, keep "— seleziona —" on top.
+        var nuovo = new Option(e.detail.nome, id);
+        var prima = null;
+        for (var i = 0; i < select.options.length; i++) {
+            var opt = select.options[i];
+            if (opt.value === "") continue;
+            if (opt.text.localeCompare(e.detail.nome, "it", { sensitivity: "base" }) > 0) {
+                prima = opt;
+                break;
+            }
         }
+        select.insertBefore(nuovo, prima);
+        select.value = id;
+        select.dispatchEvent(new Event("change", { bubbles: true }));
     }
-    select.insertBefore(nuovo, prima);
-    select.value = String(e.detail.id);
-    select.dispatchEvent(new Event("change", { bubbles: true }));
     var dialog = document.getElementById("nuovo-cliente-dialog");
     if (dialog) dialog.close();
 });
