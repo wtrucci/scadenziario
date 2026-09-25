@@ -42,6 +42,13 @@ class TestAssetJs(unittest.TestCase):
         h = self.client.get("/login").text
         self.assertIn(f"app.js?v={pacchetto.__version__}", h)
 
+    def test_anche_il_css_ha_la_versione_nell_url(self):
+        """Without it, after an update the browser keeps the old stylesheet
+        and the new markup renders with the old rules (0.9.0: the "+" beside
+        the customer dropdown fell below it, the new dialog had no style)."""
+        h = self.client.get("/login").text
+        self.assertIn(f"style.css?v={pacchetto.__version__}", h)
+
     def test_lo_script_viene_servito(self):
         r = self.client.get("/static/js/app.js")
         self.assertEqual(r.status_code, 200)

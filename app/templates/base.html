@@ -14,7 +14,11 @@
             document.documentElement.setAttribute("data-theme", theme);
         })();
     </script>
-    <link rel="stylesheet" href="{{ url_for('static', path='css/style.css') }}">
+    {# Versioned like app.js below: without ?v= a browser keeps the previous
+       release's stylesheet after an update, and new markup renders with old
+       rules — 0.9.0 showed the "nuovo cliente" button dropped under its
+       dropdown and an unstyled dialog until a hard refresh. #}
+    <link rel="stylesheet" href="{{ url_for('static', path='css/style.css') }}?v={{ app_version }}">
     <!-- HTMX: loaded from CDN. No build step, no npm. -->
     <script src="https://unpkg.com/htmx.org@2.0.3"></script>
     <!-- flatpickr: date picker that always displays dd/mm/yyyy regardless of
