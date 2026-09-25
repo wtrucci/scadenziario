@@ -4,6 +4,8 @@ PDF generation.
 - ``genera_pdf_cliente``: the billing summary, one document per customer,
   meant to be handed to that customer (or their referente) as a billing recap
   for the month.
+- ``genera_pdf_mese``: the whole month's billing summary, internal: a
+  one-page summary per customer, then every customer's detail.
 - ``genera_pdf_servizi``: the services list as filtered on screen, grouped by
   customer, with each contract's value over a year and the totals.
 
@@ -93,23 +95,13 @@ def _tronca(pdf: FPDF, testo: str, larghezza: float) -> str:
     return testo + "..."
 
 
-def genera_pdf_cliente(gruppo: GruppoCliente, etichetta_mese: str) -> bytes:
-    """Render one customer's occurrences for the month as a PDF, bytes-ready
-    for a Response body."""
-    pdf = _PDF(orientation="P", unit="mm", format="A4")
-    pdf.set_auto_page_break(auto=True, margin=15)
-    pdf.add_page()
+def _tabella_cliente(pdf: FPDF, gruppo: GruppoCliente) -> None:
+    """Draw one customer's occurrences as a table, ending with its subtotal.
 
-    pdf.set_font("Helvetica", "B", 16)
-    pdf.cell(0, 10, "Riepilogo da fatturare", new_x="LMARGIN", new_y="NEXT")
-    pdf.set_font("Helvetica", "", 11)
-    pdf.cell(0, 7, etichetta_mese, new_x="LMARGIN", new_y="NEXT")
-    pdf.ln(2)
-
-    pdf.set_font("Helvetica", "B", 13)
-    pdf.cell(0, 8, gruppo.cliente.nome, new_x="LMARGIN", new_y="NEXT")
-    pdf.ln(2)
-
+    Shared by the single-customer PDF and the whole-month PDF, so the detail
+    of a customer reads the same in both — the whole-month one is the
+    single-customer ones stapled together behind a summary.
+    """
     pdf.set_font("Helvetica", "B", 9)
     pdf.set_fill_color(230, 230, 230)
     for intestazione, larghezza, allineamento in _COLONNE:
@@ -148,6 +140,106 @@ def genera_pdf_cliente(gruppo: GruppoCliente, etichetta_mese: str) -> bytes:
     larghezza_label = sum(l for _, l, _a in _COLONNE[:-1])
     pdf.cell(larghezza_label, 8, "Subtotale", border=1, align="R")
     pdf.cell(_COLONNE[-1][1], 8, f"{gruppo.subtotale:.2f}", border=1, align="R")
+    pdf.ln()
+
+
+def _intestazione_riepilogo(pdf: FPDF, etichetta_mese: str) -> None:
+    pdf.set_font("Helvetica", "B", 16)
+    pdf.cell(0, 10, "Riepilogo da fatturare", new_x="LMARGIN", new_y="NEXT")
+    pdf.set_font("Helvetica", "", 11)
+    pdf.cell(0, 7, etichetta_mese, new_x="LMARGIN", new_y="NEXT")
+    pdf.ln(2)
+
+
+def genera_pdf_cliente(gruppo: GruppoCliente, etichetta_mese: str) -> bytes:
+    """Render one customer's occurrences for the month as a PDF, bytes-ready
+    for a Response body."""
+    pdf = _PDF(orientation="P", unit="mm", format="A4")
+    pdf.set_auto_page_break(auto=True, margin=15)
+    pdf.add_page()
+    _intestazione_riepilogo(pdf, etichetta_mese)
+
+    pdf.set_font("Helvetica", "B", 13)
+    pdf.cell(0, 8, gruppo.cliente.nome, new_x="LMARGIN", new_y="NEXT")
+    pdf.ln(2)
+    _tabella_cliente(pdf, gruppo)
+
+    return bytes(pdf.output())
+
+
+# Summary table of the whole-month PDF: one row per customer.
+_COLONNE_SOMMARIO = [
+    ("Cliente", 120, "L"),
+    ("Voci", 25, "R"),
+    ("Totale", 45, "R"),
+]
+
+# Space (mm) a customer's header plus the first rows of its table need. If
+# less is left on the page, the customer starts on the next one: a name at
+# the foot of a page with its table overleaf reads as a customer with nothing
+# to invoice.
+_SPAZIO_MINIMO_CLIENTE = 40
+
+
+def genera_pdf_mese(
+    gruppi: list[GruppoCliente], etichetta_mese: str, totale: Decimal, generato_il: date
+) -> bytes:
+    """Render the whole month as one internal PDF: a summary first (one row
+    per customer and the month's total, the figure to check at a glance),
+    then every customer's detail, drawn exactly like the single-customer PDF.
+
+    Unlike the single-customer PDF this is not meant for a customer: it lists
+    everyone's figures, like the CSV export it sits next to.
+    """
+    pdf = _PDF(orientation="P", unit="mm", format="A4")
+    pdf.set_auto_page_break(auto=True, margin=15)
+    pdf.add_page()
+    _intestazione_riepilogo(pdf, etichetta_mese)
+    pdf.set_font("Helvetica", "", 9)
+    pdf.cell(0, 5, f"Generato il {generato_il.strftime('%d/%m/%Y')} - "
+                   "esclusi i contratti disdetti e le voci già fatturate.",
+             new_x="LMARGIN", new_y="NEXT")
+    pdf.ln(4)
+
+    if not gruppi:
+        pdf.set_font("Helvetica", "I", 11)
+        pdf.cell(0, 8, "Nessuna voce da fatturare in questo mese.", new_x="LMARGIN", new_y="NEXT")
+        return bytes(pdf.output())
+
+    pdf.set_font("Helvetica", "B", 10)
+    pdf.set_fill_color(230, 230, 230)
+    for intestazione, larghezza, allineamento in _COLONNE_SOMMARIO:
+        pdf.cell(larghezza, 8, intestazione, border=1, fill=True, align=allineamento)
+    pdf.ln()
+
+    pdf.set_font("Helvetica", "", 10)
+    for g in gruppi:
+        valuta = g.righe[0].servizio.valuta if g.righe else ""
+        valori = [g.cliente.nome, str(len(g.righe)), f"{g.subtotale:.2f} {valuta}"]
+        for valore, (_, larghezza, allineamento) in zip(valori, _COLONNE_SOMMARIO):
+            pdf.cell(larghezza, 7, _tronca(pdf, valore, larghezza), border=1, align=allineamento)
+        pdf.ln()
+
+    valuta = gruppi[0].righe[0].servizio.valuta if gruppi[0].righe else ""
+    pdf.set_font("Helvetica", "B", 11)
+    voci = sum(len(g.righe) for g in gruppi)
+    pdf.cell(_COLONNE_SOMMARIO[0][1], 9, "Totale del mese", border=1, align="R")
+    pdf.cell(_COLONNE_SOMMARIO[1][1], 9, str(voci), border=1, align="R")
+    pdf.cell(_COLONNE_SOMMARIO[2][1], 9, f"{totale:.2f} {valuta}", border=1, align="R")
+    pdf.ln()
+
+    # The detail starts on its own page, so the summary stays a one-glance page.
+    pdf.add_page()
+    pdf.set_font("Helvetica", "B", 14)
+    pdf.cell(0, 9, "Dettaglio per cliente", new_x="LMARGIN", new_y="NEXT")
+    pdf.ln(2)
+    for g in gruppi:
+        if pdf.get_y() > pdf.h - pdf.b_margin - _SPAZIO_MINIMO_CLIENTE:
+            pdf.add_page()
+        pdf.set_font("Helvetica", "B", 12)
+        pdf.cell(0, 8, g.cliente.nome, new_x="LMARGIN", new_y="NEXT")
+        _tabella_cliente(pdf, g)
+        pdf.ln(6)
 
     return bytes(pdf.output())
 

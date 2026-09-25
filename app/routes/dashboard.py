@@ -4,6 +4,7 @@ Dashboard and billing-summary routes.
 - ``GET /``                  occurrences falling in the selected month
 - ``GET /riepilogo``         billing summary for the month (active services only)
 - ``GET /riepilogo/export``  CSV export of the same summary
+- ``GET /riepilogo/export/pdf-mese``  the same summary as one PDF, all customers
 
 The month is chosen via the ``?mese=YYYY-MM`` query string and defaults to the
 current month. Occurrences come from ``app/services/riepilogo.py``, which builds
@@ -26,7 +27,7 @@ from app.dependencies import require_login
 from app.models.utente import Utente
 from app.services import filtri, periodi, riepilogo
 from app.services.occorrenze import ETICHETTE_STATO_CONTRATTO, stato_contratto
-from app.services.pdf import genera_pdf_cliente
+from app.services.pdf import genera_pdf_cliente, genera_pdf_mese
 from app.templating import templates
 
 router = APIRouter()
@@ -284,6 +285,32 @@ def riepilogo_export(
         content=contenuto,
         media_type="text/csv; charset=utf-8",
         headers={"Content-Disposition": f'attachment; filename="{nome_file}"'},
+    )
+
+
+@router.get("/riepilogo/export/pdf-mese")
+def riepilogo_export_pdf_mese(
+    mese: str | None = None,
+    db: Session = Depends(get_db),
+    user: Utente = Depends(require_login),
+):
+    """The whole month as one PDF: summary per customer, then the detail.
+
+    Same scope as the page and the CSV (_contesto_riepilogo: cancelled
+    contracts and already-billed occurrences out), so the three always show
+    the same total. Internal, like the CSV: it lists every customer's
+    figures, whereas the per-customer PDF is the one meant for the customer.
+    """
+    contesto = _contesto_riepilogo(db, mese)
+    primo = periodi.parse_mese(mese)
+    contenuto = genera_pdf_mese(
+        contesto["gruppi"], contesto["nav"]["etichetta"], contesto["totale"], date.today()
+    )
+    return Response(
+        content=contenuto,
+        media_type="application/pdf",
+        headers={"Content-Disposition":
+                 f'attachment; filename="riepilogo_{periodi.chiave_mese(primo)}.pdf"'},
     )
 
 
