@@ -122,6 +122,22 @@ class TestModificaDaDashboard(unittest.TestCase):
         self.assertIn("mese%3D2026-09", r.text)
         self.assertIn("cliente%3D" + str(self.cliente_id), r.text)
 
+    def test_riga_riepilogo_ha_il_link_di_modifica_col_ritorno(self):
+        r = self.client.get("/riepilogo?mese=2026-09")
+        self.assertEqual(r.status_code, 200)
+        self.assertIn(
+            f"/servizi/{self.servizio_id}/modifica?ritorno=/riepilogo%3Fmese%3D2026-09", r.text
+        )
+
+    def test_salvataggio_torna_al_riepilogo(self):
+        r = self.client.post(
+            f"/servizi/{self.servizio_id}/modifica",
+            data=self._payload(ritorno="/riepilogo?mese=2026-09"),
+            follow_redirects=False,
+        )
+        self.assertEqual(r.status_code, 303, r.text)
+        self.assertEqual(r.headers["location"], "/riepilogo?mese=2026-09")
+
     def test_form_precompila_il_ritorno(self):
         r = self.client.get(
             f"/servizi/{self.servizio_id}/modifica", params={"ritorno": "/?mese=2026-09"}

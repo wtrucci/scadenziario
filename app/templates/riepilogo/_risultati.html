@@ -50,9 +50,14 @@
                 <td class="col-num">{{ occ.quantita }}</td>
                 <td class="col-num" data-sort="{{ occ.importo }}">{{ "%.2f"|format(occ.importo) }} {{ s.valuta }}</td>
                 <td class="col-num" data-sort="{{ occ.totale }}">{{ "%.2f"|format(occ.totale) }} {{ s.valuta }}</td>
-                <td>
+                {# Edit the contract and come back to this month, as from the
+                   dashboard (see dashboard/_risultati.html). #}
+                <td class="col-actions">
                     {% with servizio_id = s.id, data_occorrenza = occ.data_occorrenza %}
                     {% include "riepilogo/_toggle_fatturato.html" %}
+                    {% endwith %}
+                    {% with href = "/servizi/" ~ s.id ~ "/modifica?ritorno=" ~ ("/riepilogo?mese=" ~ nav.chiave)|urlencode %}
+                    {% include "partials/_btn_modifica.html" %}
                     {% endwith %}
                 </td>
             </tr>
