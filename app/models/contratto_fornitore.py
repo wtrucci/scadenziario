@@ -4,7 +4,7 @@ from datetime import date, datetime
 from decimal import Decimal
 
 from sqlalchemy import Boolean, Date, DateTime, Integer, Numeric, String, Text
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base, utcnow
 
@@ -59,6 +59,11 @@ class ContrattoFornitore(Base):
     creato_il: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     aggiornato_il: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utcnow, onupdate=utcnow
+    )
+
+    # Notifications sent about this contract; meaningless without it.
+    notifiche: Mapped[list[NotificaLog]] = relationship(
+        back_populates="contratto_fornitore", cascade="all, delete-orphan"
     )
 
     @property

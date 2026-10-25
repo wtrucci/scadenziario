@@ -39,8 +39,9 @@ finali.
 - **Contratti fornitori**: quello che acquisti dai fornitori e rivendi
   (piattaforme RMM, storage S3…), con le loro scadenze, indipendenti da
   quelle dei clienti. Rinnovo automatico calcolato, oppure pulsante
-  "Rinnovato" che sposta la scadenza al periodo successivo. Sono costi:
-  non compaiono in dashboard né nel riepilogo da fatturare.
+  "Rinnovato" che sposta la scadenza al periodo successivo. Ricevono le
+  stesse notifiche Telegram dei servizi, riconoscibili dall'icona 🛒. Sono
+  costi: non compaiono in dashboard né nel riepilogo da fatturare.
 - **Notifiche Telegram**: tre promemoria indipendenti — preavviso
   personalizzato per servizio, promemoria fisso 7 giorni prima, e avviso
   di contratto scaduto (mai per i contratti a rinnovo automatico).

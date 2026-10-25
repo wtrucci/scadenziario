@@ -20,6 +20,7 @@ from app.config import settings
 from app.database import get_db
 from app.dependencies import require_login
 from app.models.cliente import Cliente
+from app.models.contratto_fornitore import ContrattoFornitore
 from app.models.notifica_log import NotificaLog
 from app.models.servizio import Servizio
 from app.models.utente import Utente
@@ -66,11 +67,17 @@ def lista_notifiche(
     esito_val = esito if esito in ESITI_FILTRABILI else None
     ricerca = (q or "").strip()
 
+    # OUTER joins: a row is about a customer service OR a supplier contract,
+    # and an inner join on either side would hide the other kind.
     query = (
         select(NotificaLog)
-        .join(NotificaLog.servizio)
-        .join(Servizio.cliente)
-        .options(contains_eager(NotificaLog.servizio).contains_eager(Servizio.cliente))
+        .outerjoin(NotificaLog.servizio)
+        .outerjoin(Servizio.cliente)
+        .outerjoin(NotificaLog.contratto_fornitore)
+        .options(
+            contains_eager(NotificaLog.servizio).contains_eager(Servizio.cliente),
+            contains_eager(NotificaLog.contratto_fornitore),
+        )
         .order_by(NotificaLog.inviata_il.desc())
     )
     if esito_val is not None:
@@ -82,6 +89,8 @@ def lista_notifiche(
                 Cliente.nome.ilike(schema),
                 Servizio.descrizione.ilike(schema),
                 Servizio.referente.ilike(schema),
+                ContrattoFornitore.fornitore.ilike(schema),
+                ContrattoFornitore.descrizione.ilike(schema),
                 NotificaLog.dettaglio.ilike(schema),
             )
         )
@@ -138,8 +147,8 @@ def invia_prova(
     through exactly the same function the scheduler uses, so a success here
     means the scheduler's messages will get through too.
 
-    Not written to NotificaLog: that log is about services (every row points
-    to one), and a test would inflate the Inviate/Fallite counts with
+    Not written to NotificaLog: that log is about services and supplier
+    contracts (every row points to one), and a test would inflate the Inviate/Fallite counts with
     something that is not a notification.
     """
     adesso = _in_locale(datetime.now(timezone.utc)).strftime("%d/%m/%Y %H:%M")

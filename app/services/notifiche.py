@@ -24,6 +24,11 @@ every occurrence is a renewal, so nothing changes.
    past (see ``fine_copertura``), so it can never be "scaduto" — that
    invariant is enough to skip the notification, no extra check needed here.
 
+Supplier contracts (ContrattoFornitore) get the same three triggers on their
+single date — the next renewal, see app/services/fornitori.py — with messages
+that say plainly it is something WE buy. They have no occurrences and no
+instalments, so the ``apre_ciclo`` rule does not apply to them.
+
 Adding a new channel later means: write a ``invia_<canale>`` function here,
 add it to the dispatch in ``invia_notifiche_scadenza``, and add the enum
 value in app/models/enums.py.
@@ -39,9 +44,11 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
 from app.config import settings
+from app.models.contratto_fornitore import ContrattoFornitore
 from app.models.enums import CanalNotifica, TipoNotifica
 from app.models.notifica_log import NotificaLog
 from app.models.servizio import Servizio
+from app.services import fornitori
 from app.services.occorrenze import Occorrenza, fine_copertura, occorrenze_nel_periodo, stato_contratto
 
 logger = logging.getLogger("scadenziario.notifiche")
@@ -130,6 +137,69 @@ def occorrenze_da_notificare(db: Session, oggi: date | None = None) -> list[Cand
     return candidati
 
 
+@dataclass
+class CandidatoFornitore:
+    """One notification due about a supplier contract."""
+
+    contratto: ContrattoFornitore
+    tipo: TipoNotifica
+    # The renewal date the warning is about (dedup key, with tipo).
+    data_riferimento: date
+
+
+def contratti_fornitore_da_notificare(
+    db: Session, oggi: date | None = None
+) -> list[CandidatoFornitore]:
+    """Supplier contracts due for a notification right now.
+
+    The same three triggers as the customer side, on the contract's next
+    renewal date. Cancelled contracts are skipped; auto-renewing ones never
+    reach "scaduto" (see fornitori.stato_contratto_fornitore), so they only
+    ever get the two advance warnings — which is the point: an automatic
+    renewal is the one you must catch BEFORE it charges you.
+
+    Monthly auto-renewing contracts (S3 storage and the like) are skipped
+    entirely: they renew every month, so with any usual warning window they
+    would be "about to renew" forever and send two messages a month each —
+    and a monthly subscription can be cancelled whenever you like, so there
+    is no deadline to catch.
+    """
+    if oggi is None:
+        oggi = date.today()
+
+    contratti = db.scalars(
+        select(ContrattoFornitore)
+        .where(ContrattoFornitore.disdetto.is_(False))
+        .options(selectinload(ContrattoFornitore.notifiche))
+    ).all()
+
+    candidati: list[CandidatoFornitore] = []
+    for contratto in contratti:
+        if contratto.rinnovo_automatico and contratto.cadenza_mesi == 1:
+            continue
+        gia_notificate = {
+            (log.data_occorrenza, log.tipo)
+            for log in contratto.notifiche
+            if log.esito and log.canale == CanalNotifica.telegram
+        }
+        scadenza = fornitori.prossima_scadenza(contratto, oggi)
+        giorni = (scadenza - oggi).days
+
+        dovute = []
+        if 0 <= giorni <= contratto.preavviso_giorni:
+            dovute.append(TipoNotifica.preavviso)
+        if 0 <= giorni <= GIORNI_PROMEMORIA_FISSO:
+            dovute.append(TipoNotifica.promemoria_7_giorni)
+        if fornitori.stato_contratto_fornitore(contratto, oggi) == "scaduto":
+            dovute.append(TipoNotifica.contratto_scaduto)
+
+        for tipo in dovute:
+            if (scadenza, tipo) not in gia_notificate:
+                candidati.append(CandidatoFornitore(contratto, tipo, scadenza))
+
+    return candidati
+
+
 _INTESTAZIONI = {
     TipoNotifica.preavviso: "⏰ Scadenza in avvicinamento",
     TipoNotifica.promemoria_7_giorni: "🔔 Promemoria: scadenza tra 7 giorni",
@@ -162,6 +232,35 @@ def messaggio_notifica(candidato: CandidatoNotifica) -> str:
         f"Servizio: {s.descrizione}\n"
         f"{referente}"
         f"Data: {occ.data_occorrenza.strftime('%d/%m/%Y')}"
+    )
+
+
+_INTESTAZIONI_FORNITORE = {
+    TipoNotifica.preavviso: "🛒 Rinnovo fornitore in avvicinamento",
+    TipoNotifica.promemoria_7_giorni: "🛒 Promemoria: rinnovo fornitore tra 7 giorni",
+    TipoNotifica.contratto_scaduto: "🛒⚠️ Contratto fornitore scaduto",
+}
+
+
+def messaggio_fornitore(candidato: CandidatoFornitore) -> str:
+    """Telegram text for a supplier contract — distinct from the customer
+    ones at a glance, since the action is the opposite (renew or cancel what
+    we buy, not invoice someone)."""
+    c = candidato.contratto
+    riferimento = f"Riferimento: {c.riferimento}\n" if c.riferimento else ""
+    data = candidato.data_riferimento.strftime("%d/%m/%Y")
+    if candidato.tipo is TipoNotifica.contratto_scaduto:
+        coda = f"Scaduto il: {data}\nNon si rinnova da solo: rinnovarlo o segnarlo come disdetto."
+    elif c.rinnovo_automatico:
+        coda = f"Si rinnova automaticamente il: {data}\nSe non serve più, va disdetto prima."
+    else:
+        coda = f"Da rinnovare entro il: {data}"
+    return (
+        f"{_INTESTAZIONI_FORNITORE[candidato.tipo]}\n"
+        f"Fornitore: {c.fornitore}\n"
+        f"Contratto: {c.descrizione}\n"
+        f"{riferimento}"
+        f"{coda}"
     )
 
 
@@ -208,28 +307,47 @@ def invia_telegram(testo: str) -> tuple[bool, str | None]:
 
 
 def invia_notifiche_scadenza(db: Session) -> int:
-    """Send one Telegram notification per candidate, logging every attempt
-    (success or failure) so a successful send is never repeated.
+    """Send one Telegram notification per candidate — customer services first,
+    then supplier contracts — logging every attempt (success or failure) so a
+    successful send is never repeated.
 
     Returns the number of candidates processed (sent or attempted).
     """
-    candidati = occorrenze_da_notificare(db)
-    for candidato in candidati:
-        esito, dettaglio = invia_telegram(messaggio_notifica(candidato))
-        db.add(
-            NotificaLog(
-                servizio_id=candidato.servizio.id,
-                data_occorrenza=candidato.data_riferimento,
-                tipo=candidato.tipo,
-                canale=CanalNotifica.telegram,
-                esito=esito,
-                dettaglio=dettaglio,
-            )
+    clienti = occorrenze_da_notificare(db)
+    for candidato in clienti:
+        _invia_e_registra(
+            db, messaggio_notifica(candidato), candidato.tipo, candidato.data_riferimento,
+            servizio_id=candidato.servizio.id,
         )
-        if not esito:
-            logger.warning(
-                "Notifica Telegram (%s) non inviata per servizio_id=%s data=%s: %s",
-                candidato.tipo.value, candidato.servizio.id, candidato.data_riferimento, dettaglio,
-            )
+    fornitori_dovuti = contratti_fornitore_da_notificare(db)
+    for candidato in fornitori_dovuti:
+        _invia_e_registra(
+            db, messaggio_fornitore(candidato), candidato.tipo, candidato.data_riferimento,
+            contratto_fornitore_id=candidato.contratto.id,
+        )
     db.commit()
-    return len(candidati)
+    return len(clienti) + len(fornitori_dovuti)
+
+
+def _invia_e_registra(
+    db: Session, testo: str, tipo: TipoNotifica, data_riferimento: date, *,
+    servizio_id: int | None = None, contratto_fornitore_id: int | None = None,
+) -> None:
+    """Send one message and log the attempt against whichever it is about."""
+    esito, dettaglio = invia_telegram(testo)
+    db.add(
+        NotificaLog(
+            servizio_id=servizio_id,
+            contratto_fornitore_id=contratto_fornitore_id,
+            data_occorrenza=data_riferimento,
+            tipo=tipo,
+            canale=CanalNotifica.telegram,
+            esito=esito,
+            dettaglio=dettaglio,
+        )
+    )
+    if not esito:
+        logger.warning(
+            "Notifica Telegram (%s) non inviata per servizio_id=%s contratto_fornitore_id=%s data=%s: %s",
+            tipo.value, servizio_id, contratto_fornitore_id, data_riferimento, dettaglio,
+        )

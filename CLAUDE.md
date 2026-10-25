@@ -164,7 +164,10 @@ le scelte tecniche quando non sono banali.
 > con data di decorrenza) è un possibile miglioramento futuro.
 
 - **Utente**: id, username, password_hash, ruolo, attivo.
-- **NotificaLog**: id, servizio_id (FK), canale, inviata_il, esito, dettaglio.
+- **NotificaLog**: id, servizio_id (FK, nullable), contratto_fornitore_id
+  (FK, nullable), canale, inviata_il, esito, dettaglio. Ogni riga riguarda un
+  servizio cliente OPPURE un contratto fornitore: un CHECK impone che sia
+  valorizzato esattamente uno dei due.
 - **OffertaRinnovo**: id, servizio_id (FK, cascade), data_rinnovo,
   inviata_il. Vedi "Offerte di rinnovo" sotto.
 - **ContrattoFornitore**: id, fornitore (testo libero, niente anagrafica),
@@ -269,6 +272,12 @@ le scelte tecniche quando non sono banali.
     non c'è fatturazione da tenere agganciata.
   - Stati e badge riusano quelli dei servizi (Attivo / In scadenza / Scaduto
     / Disdetto).
+  - Notifiche Telegram: gli stessi tre avvisi dei servizi (preavviso, 7
+    giorni, scaduto) sulla prossima scadenza, con messaggi che iniziano con
+    🛒 per distinguerli; il log li registra su `contratto_fornitore_id`.
+    Esclusi i contratti **mensili a rinnovo automatico**: sarebbero sempre
+    "in scadenza" (due messaggi al mese per sempre) e si disdicono quando si
+    vuole, quindi non c'è una scadenza da presidiare. Decisione dell'autore.
 - Calcolo occorrenze: implementare in un modulo di servizio dedicato e ben
   testato (è il cuore dell'app). Mantenere SEMPRE Decimal per i valori
   monetari, mai float.

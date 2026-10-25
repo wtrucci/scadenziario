@@ -13,7 +13,7 @@
                silently drop it. #}
             <input type="hidden" name="esito" value="{{ filtri.esito }}">
             <input type="search" id="q" name="q" value="{{ filtri.q }}"
-                   placeholder="Cerca cliente, servizio, errore…" aria-label="Cerca fra le notifiche">
+                   placeholder="Cerca cliente, fornitore, servizio, errore…" aria-label="Cerca fra le notifiche">
         </form>
         <span id="ricerca-reset">{% if filtri.q or filtri.esito %}<a class="btn btn-secondary" href="/notifiche">Azzera</a>{% endif %}</span>
         {# hx-disabled-elt: one click, one message — a double click would send

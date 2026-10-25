@@ -45,8 +45,17 @@
         {% set locale = in_locale(n.inviata_il) %}
         <tr class="{{ 'row-da-fatturare' if not n.esito else '' }}">
             <td class="col-data" data-sort="{{ n.inviata_il.isoformat() }}">{{ locale.strftime('%d/%m/%Y %H:%M') }}</td>
+            {# A supplier contract has no customer: its supplier takes that
+               column, tagged so the two kinds never read alike. The header
+               stays "Cliente" because table preferences are saved by column
+               name, and renaming it would drop a saved sort on it. #}
+            {% if n.fornitore %}
+            <td class="cell-primary">{{ n.contratto_fornitore.fornitore }} <span class="badge badge-tipo">fornitore</span></td>
+            <td>{{ n.contratto_fornitore.descrizione }}</td>
+            {% else %}
             <td class="cell-primary">{{ n.servizio.cliente.nome }}</td>
             <td>{{ n.servizio.descrizione }}</td>
+            {% endif %}
             <td class="col-data" data-sort="{{ n.data_occorrenza.isoformat() }}">{{ n.data_occorrenza.strftime('%d/%m/%Y') }}</td>
             <td><span class="badge badge-tipo">{{ n.tipo.value.replace('_', ' ') }}</span></td>
             <td class="cell-secondary">{{ n.canale.value }}</td>
