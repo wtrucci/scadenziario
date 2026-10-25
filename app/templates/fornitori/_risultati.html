@@ -1,0 +1,95 @@
+{# Results region swapped by HTMX while you type in the search box and after a
+   "Rinnovato" click; also included by the full page.
+   Context: righe (list of (ContrattoFornitore, cadence label, next expiry,
+   state)), conteggi, link_stati, filtri, etichette_stato, dopo_rinnovo. #}
+{# Out-of-band swaps only make sense in an HTMX response: on a full page load
+   this partial is rendered inside the page, which already has these elements
+   in its header. #}
+{% if request.headers.get('HX-Request') %}
+<span id="ricerca-reset" hx-swap-oob="true">{% if filtri.q or filtri.stato %}<a class="btn btn-secondary" href="/fornitori">Azzera</a>{% endif %}</span>
+{% endif %}
+
+<div class="summary-cards">
+    <a class="summary-card summary-card-warn{% if filtri.stato == 'in_scadenza' %} summary-card-attiva{% endif %}"
+       href="{{ link_stati.in_scadenza }}" aria-pressed="{{ 'true' if filtri.stato == 'in_scadenza' else 'false' }}"
+       title="{% if filtri.stato == 'in_scadenza' %}Mostra tutti i contratti{% else %}Mostra solo quelli in scadenza{% endif %}">
+        <span class="summary-value">{{ conteggi.in_scadenza }}</span>
+        <span class="summary-label">In scadenza</span>
+    </a>
+    <a class="summary-card summary-card-alert{% if filtri.stato == 'scaduto' %} summary-card-attiva{% endif %}"
+       href="{{ link_stati.scaduto }}" aria-pressed="{{ 'true' if filtri.stato == 'scaduto' else 'false' }}"
+       title="{% if filtri.stato == 'scaduto' %}Mostra tutti i contratti{% else %}Mostra solo quelli scaduti{% endif %}">
+        <span class="summary-value">{{ conteggi.scaduto }}</span>
+        <span class="summary-label">Scaduti</span>
+    </a>
+</div>
+
+{% if righe %}
+<table class="table-servizi" data-table-id="fornitori">
+    <thead>
+        <tr>
+            <th class="sortable">Fornitore</th>
+            <th class="sortable">Descrizione</th>
+            <th class="sortable">Riferimento</th>
+            <th class="sortable">Scadenza</th>
+            <th class="sortable">Cadenza</th>
+            <th class="sortable col-num">Qtà</th>
+            <th class="sortable col-num">Costo unit.</th>
+            <th class="sortable col-num">Totale</th>
+            <th class="sortable">Stato</th>
+            <th class="col-actions-header">
+                Azioni
+                {% include "partials/_col_toggle_btn.html" %}
+            </th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for c, cadenza, prossima, stato_c in righe %}
+        {# title: the notes, shown when the pointer rests on the row — as in
+           the services list. #}
+        <tr id="fornitore-{{ c.id }}"{% if c.note %} title="{{ c.note }}"{% endif %}>
+            <td class="cell-primary">{{ c.fornitore }}</td>
+            <td>{{ c.descrizione }}{% if c.note %}&nbsp;<svg class="icon icon-nota" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-label="Ha delle note" role="img"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>{% endif %}</td>
+            <td class="cell-secondary col-seriale">{% if c.riferimento %}{{ c.riferimento }}{% else %}—{% endif %}</td>
+            <td class="col-data cell-secondary" data-sort="{{ prossima.isoformat() }}">
+                {{ prossima.strftime('%d/%m/%Y') }}
+                {% if c.rinnovo_automatico %}
+                <span class="badge badge-tipo" title="Il fornitore lo rinnova automaticamente ogni {{ c.cadenza_mesi }} mesi">↻ auto</span>
+                {% endif %}
+            </td>
+            <td class="cell-secondary" data-sort="{{ c.cadenza_mesi }}">{{ cadenza }}</td>
+            <td class="col-num">{{ c.quantita }}</td>
+            <td class="col-num" data-sort="{{ c.importo }}">{{ "%.2f"|format(c.importo) }} {{ c.valuta }}</td>
+            <td class="col-num" data-sort="{{ c.totale }}"><strong>{{ "%.2f"|format(c.totale) }} {{ c.valuta }}</strong></td>
+            <td><span class="badge badge-stato-{{ stato_c }}">{{ etichette_stato[stato_c] }}</span></td>
+            <td class="col-actions">
+                {# Only a manual contract is renewed by hand: an automatic one
+                   moves on by itself, a cancelled one does not renew. #}
+                {% if not c.rinnovo_automatico and not c.disdetto %}
+                <button type="button" class="icon-btn" title="Rinnovato: sposta la scadenza al periodo successivo"
+                        aria-label="Segna come rinnovato"
+                        hx-post="/fornitori/{{ c.id }}/rinnovato"
+                        hx-target="#risultati" hx-swap="innerHTML"
+                        hx-include="#f-stato,#q"
+                        hx-confirm="Rinnovato '{{ c.descrizione }}'? La scadenza passa dal {{ c.data_scadenza.strftime('%d/%m/%Y') }} al {{ dopo_rinnovo(c).strftime('%d/%m/%Y') }}.">
+                    <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+                </button>
+                {% endif %}
+                {% with href = "/fornitori/" ~ c.id ~ "/modifica" %}
+                {% include "partials/_btn_modifica.html" %}
+                {% endwith %}
+                {% with url = "/fornitori/" ~ c.id,
+                        target = "#fornitore-" ~ c.id,
+                        conferma = "Eliminare il contratto '" ~ c.descrizione ~ "' di " ~ c.fornitore ~ "?" %}
+                {% include "partials/_btn_elimina.html" %}
+                {% endwith %}
+            </td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% elif filtri.q or filtri.stato %}
+<p class="muted">Nessun contratto corrisponde ai criteri attivi.</p>
+{% else %}
+<p class="muted">Nessun contratto fornitore. <a href="/fornitori/nuovo">Inserisci il primo</a>.</p>
+{% endif %}

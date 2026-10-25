@@ -167,6 +167,10 @@ le scelte tecniche quando non sono banali.
 - **NotificaLog**: id, servizio_id (FK), canale, inviata_il, esito, dettaglio.
 - **OffertaRinnovo**: id, servizio_id (FK, cascade), data_rinnovo,
   inviata_il. Vedi "Offerte di rinnovo" sotto.
+- **ContrattoFornitore**: id, fornitore (testo libero, niente anagrafica),
+  descrizione, riferimento (opz.), data_scadenza, cadenza_mesi,
+  rinnovo_automatico, importo (costo), quantita, valuta, preavviso_giorni,
+  disdetto, note. Vedi "Contratti fornitori" sotto.
 
 ## Funzionalità chiave
 
@@ -250,6 +254,21 @@ le scelte tecniche quando non sono banali.
   - Il contatore nel menu (scadute + urgenti) è caricato a parte via HTMX
     (`GET /offerte/contatore`) e si ricarica sull'evento
     `offerteAggiornate`.
+- **Contratti fornitori** (pagina `/fornitori`): ciò che si acquista e si
+  rivende, con le scadenze del fornitore, che non coincidono con quelle dei
+  clienti. Liste indipendenti per scelta dell'autore: nessun collegamento ai
+  servizi dei clienti, nessun calcolo di margine, niente in dashboard,
+  riepilogo o offerte (sono costi, non fatture).
+  - Molto più semplice del Servizio: niente occorrenze né stato di
+    fatturazione. Logica in `app/services/fornitori.py`.
+  - Con `rinnovo_automatico` la scadenza mostrata si calcola avanzando di
+    `cadenza_mesi` da `data_scadenza` (ogni passo dall'ancora, niente
+    deriva) e non è mai "Scaduto".
+  - Senza, il pulsante **"Rinnovato"** sposta `data_scadenza` avanti di una
+    cadenza: qui, a differenza dei servizi, la data salvata SI muove, perché
+    non c'è fatturazione da tenere agganciata.
+  - Stati e badge riusano quelli dei servizi (Attivo / In scadenza / Scaduto
+    / Disdetto).
 - Calcolo occorrenze: implementare in un modulo di servizio dedicato e ben
   testato (è il cuore dell'app). Mantenere SEMPRE Decimal per i valori
   monetari, mai float.
