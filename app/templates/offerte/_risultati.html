@@ -1,0 +1,91 @@
+{# Results region swapped by HTMX while you type in the search box and after
+   each "offerta inviata" toggle; also included by the full page.
+   Context: righe (services.offerte.RigaOfferta), conteggi, link_stati,
+   filtri, ritorno, in_locale (UTC -> local time). #}
+{# Out-of-band swaps only make sense in an HTMX response: on a full page load
+   this partial is rendered inside the page, which already has these elements
+   in its header. #}
+{% if request.headers.get('HX-Request') %}
+<span id="ricerca-reset" hx-swap-oob="true">{% if filtri.q or filtri.stato %}<a class="btn btn-secondary" href="/offerte">Azzera</a>{% endif %}</span>
+{% endif %}
+
+<div class="summary-cards">
+    <a class="summary-card summary-card-alert{% if filtri.stato == 'urgenti' %} summary-card-attiva{% endif %}"
+       href="{{ link_stati.urgenti }}" aria-pressed="{{ 'true' if filtri.stato == 'urgenti' else 'false' }}"
+       title="Non inviate, con il rinnovo passato o a meno di {{ giorni_urgenza }} giorni">
+        <span class="summary-value">{{ conteggi.urgenti }}</span>
+        <span class="summary-label">Urgenti</span>
+    </a>
+    <a class="summary-card summary-card-warn{% if filtri.stato == 'da_inviare' %} summary-card-attiva{% endif %}"
+       href="{{ link_stati.da_inviare }}" aria-pressed="{{ 'true' if filtri.stato == 'da_inviare' else 'false' }}"
+       title="Tutte le offerte non ancora inviate">
+        <span class="summary-value">{{ conteggi.da_inviare }}</span>
+        <span class="summary-label">Da inviare</span>
+    </a>
+    <a class="summary-card summary-card-ok{% if filtri.stato == 'inviate' %} summary-card-attiva{% endif %}"
+       href="{{ link_stati.inviate }}" aria-pressed="{{ 'true' if filtri.stato == 'inviate' else 'false' }}"
+       title="Offerte già inviate, in attesa della risposta del cliente">
+        <span class="summary-value">{{ conteggi.inviate }}</span>
+        <span class="summary-label">Inviate</span>
+    </a>
+</div>
+
+{% if righe %}
+<table class="table-servizi" data-table-id="offerte">
+    <thead>
+        <tr>
+            <th class="sortable">Cliente</th>
+            <th class="sortable">Servizio</th>
+            <th class="sortable">Referente</th>
+            <th class="sortable">Rinnovo</th>
+            <th class="sortable col-num">Quando</th>
+            <th class="sortable col-num">Totale</th>
+            <th class="sortable">Offerta</th>
+            <th class="col-actions-header">
+                {% include "partials/_col_toggle_btn.html" %}
+            </th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for r in righe %}
+        {% set s = r.servizio %}
+        {% set occ = r.rinnovo %}
+        {% set rowcls = {"scaduta": "row-da-fatturare", "urgente": "row-in-scadenza", "inviata": "row-fatturato"}.get(r.stato, "") %}
+        <tr class="{{ rowcls }}"{% if s.note %} title="{{ s.note }}"{% endif %}>
+            <td class="cell-primary">{{ s.cliente.nome }}</td>
+            <td>{{ s.descrizione }}</td>
+            <td>{% if s.referente %}{{ s.referente }}{% else %}<span class="muted">—</span>{% endif %}</td>
+            <td class="col-data" data-sort="{{ occ.data_occorrenza.isoformat() }}">{{ occ.data_occorrenza.strftime('%d/%m/%Y') }}</td>
+            <td class="col-num" data-sort="{{ r.giorni }}">
+                {% if r.giorni < 0 %}{{ -r.giorni }} gg fa
+                {% elif r.giorni == 0 %}oggi
+                {% else %}fra {{ r.giorni }} gg{% endif %}
+            </td>
+            <td class="col-num" data-sort="{{ occ.totale }}">{{ "%.2f"|format(occ.totale) }} {{ s.valuta }}</td>
+            {# data-sort: the cell holds a button, so sorting needs the state
+               behind it — sent offers together, unsent ones together. #}
+            <td data-sort="{{ '1' if r.inviata else '0' }}">
+                <button type="button"
+                        class="{% if r.inviata %}btn-ok{% else %}btn-warn{% endif %}"
+                        hx-post="/offerte/{{ s.id }}/{{ occ.data_occorrenza.isoformat() }}/inviata"
+                        hx-target="#risultati"
+                        hx-swap="innerHTML"
+                        hx-include="#f-stato,#q"
+                        title="{% if r.inviata %}Inviata il {{ in_locale(r.inviata_il).strftime('%d/%m/%Y') }} — clic per segnarla come da inviare{% else %}Segna come inviata{% endif %}">
+                    {% if r.inviata %}✓ Inviata {{ in_locale(r.inviata_il).strftime('%d/%m') }}{% else %}Da inviare{% endif %}
+                </button>
+            </td>
+            <td class="col-actions">
+                {% with href = "/servizi/" ~ s.id ~ "/modifica?ritorno=" ~ ritorno|urlencode %}
+                {% include "partials/_btn_modifica.html" %}
+                {% endwith %}
+            </td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% elif filtri.q or filtri.stato %}
+<p class="muted">Nessuna offerta corrisponde ai criteri attivi.</p>
+{% else %}
+<p class="muted">Nessun contratto da rinnovare nei prossimi {{ giorni_orizzonte }} giorni.</p>
+{% endif %}

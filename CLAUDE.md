@@ -165,6 +165,8 @@ le scelte tecniche quando non sono banali.
 
 - **Utente**: id, username, password_hash, ruolo, attivo.
 - **NotificaLog**: id, servizio_id (FK), canale, inviata_il, esito, dettaglio.
+- **OffertaRinnovo**: id, servizio_id (FK, cascade), data_rinnovo,
+  inviata_il. Vedi "Offerte di rinnovo" sotto.
 
 ## Funzionalità chiave
 
@@ -228,6 +230,26 @@ le scelte tecniche quando non sono banali.
     dipendenza di sistema come Pango/Cairo) in `app/services/pdf.py`. Non è
     fatturazione vera (niente numerazione fiscale, PDF/A, firma, ecc.): resta
     un riepilogo, solo in un formato diverso dal CSV.
+- **Offerte di rinnovo** (pagina `/offerte`, voce "Offerte" nel menu):
+  prima del rinnovo di un contratto SENZA rinnovo automatico va mandata
+  un'offerta al cliente. La pagina elenca le proposte di rinnovo (il primo
+  inizio-ciclo non fatturato, vedi sopra) entro 60 giorni, comprese quelle
+  già passate; i contratti a rinnovo automatico e i disdetti sono esclusi.
+  - Il flag "offerta inviata" sta nella tabella **OffertaRinnovo**
+    (servizio_id, data_rinnovo, inviata_il; unica per coppia): una riga
+    esiste solo se l'offerta è inviata, smarcarla la cancella. Vale per
+    QUEL rinnovo: confermato il rinnovo, la proposta successiva ha un'altra
+    data e riparte da "da inviare" senza azzerare nulla. Separata da
+    OverrideImporto perché riguarda un passo che precede la fatturazione.
+  - Stato: inviata / scaduta (passata senza offerta, rossa) / urgente
+    (entro 30 giorni, gialla) / da inviare. Soglie fisse in
+    `app/services/offerte.py`, non per servizio.
+  - Una riga esce solo quando il rinnovo smette di essere in sospeso
+    (fatturato o contratto disdetto), mai perché l'offerta è stata segnata:
+    così il clic si può sempre annullare.
+  - Il contatore nel menu (scadute + urgenti) è caricato a parte via HTMX
+    (`GET /offerte/contatore`) e si ricarica sull'evento
+    `offerteAggiornate`.
 - Calcolo occorrenze: implementare in un modulo di servizio dedicato e ben
   testato (è il cuore dell'app). Mantenere SEMPRE Decimal per i valori
   monetari, mai float.

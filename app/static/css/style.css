@@ -211,6 +211,21 @@ a:hover { color: var(--primary-hover); }
     font-weight: 600;
 }
 
+/* Counter next to a menu entry (offers to chase). Empty = nothing to show. */
+.nav-badge {
+    margin-left: auto;
+    min-width: 1.4rem;
+    padding: 0.05rem 0.4rem;
+    border-radius: 999px;
+    background: var(--danger);
+    color: #fff;
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-align: center;
+}
+
+.nav-badge:empty { display: none; }
+
 .sidebar-footer {
     display: flex;
     align-items: center;

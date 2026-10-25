@@ -19,7 +19,7 @@ from app.dependencies import (
     NotAuthenticatedError,
     NotAuthorizedError,
 )
-from app.routes import auth, clienti, dashboard, notifiche, servizi
+from app.routes import auth, clienti, dashboard, notifiche, offerte, servizi
 from app.scheduler import avvia_scheduler, ferma_scheduler
 from app.templating import templates
 
@@ -115,3 +115,4 @@ app.include_router(dashboard.router)
 app.include_router(clienti.router)
 app.include_router(servizi.router)
 app.include_router(notifiche.router)
+app.include_router(offerte.router)

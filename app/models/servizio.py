@@ -118,6 +118,10 @@ class Servizio(Base):
     override_importi: Mapped[list[OverrideImporto]] = relationship(
         back_populates="servizio", cascade="all, delete-orphan"
     )
+    # Renewal offers marked as sent (see OffertaRinnovo). Deleted with the service.
+    offerte_rinnovo: Mapped[list[OffertaRinnovo]] = relationship(
+        back_populates="servizio", cascade="all, delete-orphan"
+    )
 
     @property
     def totale(self) -> Decimal:

@@ -31,6 +31,11 @@ finali.
   clienti) o PDF (per singolo cliente, da inoltrare al cliente stesso).
   Marcatura "fatturato" singola o massiva per cliente, sincronizzata in
   tempo reale con la dashboard.
+- **Offerte di rinnovo**: i contratti senza rinnovo automatico che si
+  rinnovano nei prossimi 60 giorni, con il flag "offerta inviata" per
+  ciascun rinnovo. Sotto i 30 giorni un'offerta non inviata diventa
+  gialla, a rinnovo passato rossa; il menu mostra quante sono. Il flag
+  vale per quel rinnovo: il successivo riparte da "da inviare".
 - **Notifiche Telegram**: tre promemoria indipendenti — preavviso
   personalizzato per servizio, promemoria fisso 7 giorni prima, e avviso
   di contratto scaduto (mai per i contratti a rinnovo automatico).
