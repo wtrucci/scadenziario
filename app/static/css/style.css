@@ -281,11 +281,10 @@ a:hover { color: var(--primary-hover); }
 .content {
     flex: 1;
     min-width: 0;
-    /* Generous cap so wide tables (servizi/dashboard, 9+ columns) get to use
-       the screen on a normal desktop; still caps on ultra-wide monitors so
-       lines of text (forms, notes) don't stretch edge to edge. */
-    max-width: 1600px;
-    margin: 2rem auto;
+    /* No width cap: pages follow the window, so wide tables (servizi,
+       dashboard, fornitori) use the whole screen. Forms keep their own cap
+       (.form-card), since a field as wide as the monitor is hard to read. */
+    margin: 2rem 0;
     padding: 0 1.5rem;
 }
 

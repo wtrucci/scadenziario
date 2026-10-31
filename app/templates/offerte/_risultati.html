@@ -36,9 +36,11 @@
         <tr>
             <th class="sortable">Cliente</th>
             <th class="sortable">Servizio</th>
+            <th class="sortable">Seriale</th>
             <th class="sortable">Referente</th>
             <th class="sortable">Rinnovo</th>
             <th class="sortable col-num">Quando</th>
+            <th class="sortable col-num">Prezzo unit.</th>
             <th class="sortable col-num">Totale</th>
             <th class="sortable">Offerta</th>
             <th class="col-actions-header">
@@ -54,6 +56,7 @@
         <tr class="{{ rowcls }}"{% if s.note %} title="{{ s.note }}"{% endif %}>
             <td class="cell-primary">{{ s.cliente.nome }}</td>
             <td>{{ s.descrizione }}</td>
+            <td class="cell-secondary col-seriale">{% if s.numero_seriale %}{{ s.numero_seriale }}{% else %}—{% endif %}</td>
             <td>{% if s.referente %}{{ s.referente }}{% else %}<span class="muted">—</span>{% endif %}</td>
             <td class="col-data" data-sort="{{ occ.data_occorrenza.isoformat() }}">{{ occ.data_occorrenza.strftime('%d/%m/%Y') }}</td>
             <td class="col-num" data-sort="{{ r.giorni }}">
@@ -61,6 +64,9 @@
                 {% elif r.giorni == 0 %}oggi
                 {% else %}fra {{ r.giorni }} gg{% endif %}
             </td>
+            {# The renewal's own price: a correction or a frozen price on that
+               date wins over the contract's default, as in the riepilogo. #}
+            <td class="col-num" data-sort="{{ occ.importo }}">{{ "%.2f"|format(occ.importo) }} {{ s.valuta }}</td>
             <td class="col-num" data-sort="{{ occ.totale }}">{{ "%.2f"|format(occ.totale) }} {{ s.valuta }}</td>
             {# data-sort: the cell holds a button, so sorting needs the state
                behind it — sent offers together, unsent ones together. #}

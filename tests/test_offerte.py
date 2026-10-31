@@ -184,6 +184,14 @@ class TestRotteOfferte(_BaseDb):
         self.assertIn(f"/offerte/{s.id}/{s.data_scadenza.isoformat()}/inviata", r.text)
         self.assertIn(f"/servizi/{s.id}/modifica?ritorno=/offerte", r.text)
 
+    def test_colonne_seriale_e_prezzo(self):
+        self._servizio(data_scadenza=self.oggi + timedelta(days=20),
+                       numero_seriale="FGT60F-XYZ", importo=Decimal("123.45"))
+        r = self.client.get("/offerte")
+        self.assertIn("FGT60F-XYZ", r.text)
+        self.assertIn("123.45 EUR", r.text)   # unit price
+        self.assertIn("246.90 EUR", r.text)   # total: quantity 2
+
     def test_toggle_segna_e_smarca(self):
         s = self._servizio(data_scadenza=self.oggi + timedelta(days=20))
         url = f"/offerte/{s.id}/{s.data_scadenza.isoformat()}/inviata"
