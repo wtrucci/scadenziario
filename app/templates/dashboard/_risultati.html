@@ -7,9 +7,6 @@
    stati_servizi (servizio.id -> computed contract state), etichette_stato
    (state -> label), clienti/referenti/stati_occorrenza (filter choices). #}
 {% set filtri_attivi = filtri.cliente or filtri.referente or filtri.stato %}
-{# The dashboard exactly as it is being shown, handed to the edit form so it
-   can bring the user back to this month with these filters. #}
-{% set ritorno_dashboard = "/?mese=" ~ nav.chiave ~ filtri_qs %}
 
 {% with base_url = "/" %}
 {% include "partials/_navigazione_mese.html" %}
@@ -103,12 +100,10 @@
             <th class="sortable col-num">Importo unit.</th>
             <th class="sortable col-num">Totale</th>
             <th class="sortable">Stato servizio</th>
-            <th class="sortable"><span class="th-label">Fatturazione</span></th>
-            {# The actions column is appended LAST on purpose: the saved
-               "hidden columns" preference is stored by column index, so adding
-               a column anywhere else would shift what users had hidden. #}
-            <th class="col-actions-header">
-                Azioni
+            {# No "Azioni" column: clicking a row opens the service sheet, with
+               Storico and Modifica. The column picker rides on the last header. #}
+            <th class="sortable col-actions-header">
+                <span class="th-label">Fatturazione</span>
                 {% include "partials/_col_toggle_btn.html" %}
             </th>
         </tr>
@@ -118,7 +113,10 @@
         {% set s = riga.servizio %}
         {% set occ = riga.occorrenza %}
         {% set rowcls = {"da_fatturare": "row-da-fatturare", "in_scadenza": "row-in-scadenza", "fatturato": "row-fatturato"}.get(occ.stato_visivo, "") %}
-        <tr class="{{ rowcls }}">
+        {# data-anteprima: a click on the row (not on its button) opens the
+           service sheet — see app.js. No "Elimina" in it from here: a row is
+           one occurrence, and deleting would wipe the whole contract. #}
+        <tr class="{{ rowcls }}" data-anteprima="/servizi/{{ s.id }}/anteprima">
             <td class="cell-primary">{{ s.cliente.nome }}</td>
             <td class="cell-secondary">{% if s.referente %}{{ s.referente }}{% else %}—{% endif %}</td>
             <td>{{ s.descrizione }}</td>
@@ -147,15 +145,6 @@
             <td data-sort="{{ '1' if occ.fatturato else '0' }}">
                 {% with servizio_id = s.id, data_occorrenza = occ.data_occorrenza, fatturato = occ.fatturato %}
                 {% include "servizi/_toggle_fatturato.html" %}
-                {% endwith %}
-            </td>
-            {# Edit the contract without leaving the month you were looking at:
-               "ritorno" brings you back here, filters included. No delete here
-               — from a single occurrence it is far too easy to wipe out a whole
-               contract by mistake; that lives in the services list. #}
-            <td class="col-actions">
-                {% with href = "/servizi/" ~ s.id ~ "/modifica?ritorno=" ~ ritorno_dashboard|urlencode %}
-                {% include "partials/_btn_modifica.html" %}
                 {% endwith %}
             </td>
         </tr>

@@ -630,6 +630,46 @@ def storico(
     )
 
 
+@router.get("/{servizio_id}/anteprima")
+def anteprima(
+    request: Request,
+    servizio_id: int,
+    ritorno: str = "",
+    elimina: bool = False,
+    db: Session = Depends(get_db),
+    user: Utente = Depends(require_login),
+):
+    """Everything about one service, for the read-only sheet that opens when a
+    table row is clicked (HTMX, see app.js). Fetched at the moment it opens,
+    so it never shows data older than the page.
+
+    ``ritorno`` is the page the row was clicked on, handed on to the sheet's
+    "Modifica" button so saving brings the user back there (see _destinazione).
+
+    ``elimina`` shows the delete button. Only the services list asks for it,
+    because only there a row IS the contract: on the dashboard, the summary or
+    the offers a row is one occurrence or one renewal, and "delete" from there
+    reads as "delete this invoice" while it would wipe the whole contract.
+    """
+    s = _get_or_404(db, servizio_id)
+    oggi = date.today()
+    stato_s = stato_contratto(s, oggi=oggi)
+    return templates.TemplateResponse(
+        request,
+        "servizi/_anteprima.html",
+        {
+            "s": s,
+            "cadenza": etichetta_cadenza(s.cadenza_mesi),
+            "prossima": prossima_scadenza(s, oggi),
+            "stato_s": stato_s,
+            "etichetta_stato": ETICHETTE_STATO_CONTRATTO[stato_s],
+            "valore_annuo": valore_annuo(s),
+            "ritorno": _destinazione(ritorno),
+            "elimina": elimina,
+        },
+    )
+
+
 @router.get("/{servizio_id}/modifica")
 def modifica_form(
     request: Request,
@@ -761,13 +801,24 @@ def aggiorna_servizio(
 @router.delete("/{servizio_id}")
 def elimina_servizio(
     servizio_id: int,
+    da: str = "",
     db: Session = Depends(get_db),
     user: Utente = Depends(require_login),
 ):
+    """Delete a service (HTMX).
+
+    From the service sheet (``da=scheda``) the answer asks HTMX to reload
+    the page: the sheet can be opened on several pages, each showing the
+    service differently (a row, occurrences, a renewal), and a reload is the
+    one way to drop it — and update counts and totals — on all of them.
+    """
     s = _get_or_404(db, servizio_id)
     db.delete(s)
     db.commit()
-    return Response(status_code=200)
+    risposta = Response(status_code=200)
+    if da == "scheda":
+        risposta.headers["HX-Refresh"] = "true"
+    return risposta
 
 
 @router.post("/{servizio_id}/occorrenze/{data_occorrenza}/fatturato")

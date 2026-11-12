@@ -9,7 +9,10 @@
 {# title: the service's notes, shown by the browser when the pointer rests on
    the row — the list has no room for a notes column, and most rows have
    none. The small icon beside the description says which rows do. #}
-<tr id="servizio-{{ s.id }}" data-stato="{{ stato_s }}"{% if s.note %} title="{{ s.note }}"{% endif %}>
+{# data-anteprima: clicking the row opens the service sheet (see app.js),
+   which holds the row's actions — storico, modifica and, on this page only,
+   elimina. #}
+<tr id="servizio-{{ s.id }}" data-stato="{{ stato_s }}" data-anteprima="/servizi/{{ s.id }}/anteprima?elimina=1"{% if s.note %} title="{{ s.note }}"{% endif %}>
     <td class="cell-primary">{{ s.cliente.nome }}</td>
     <td class="cell-secondary">{% if s.referente %}{{ s.referente }}{% else %}—{% endif %}</td>
     <td class="cell-secondary">{% if s.luogo_installazione %}{{ s.luogo_installazione }}{% else %}—{% endif %}</td>
@@ -33,17 +36,4 @@
     <td class="col-num" data-sort="{{ s.importo }}">{{ "%.2f"|format(s.importo) }} {{ s.valuta }}</td>
     <td class="col-num" data-sort="{{ s.totale }}"><strong>{{ "%.2f"|format(s.totale) }} {{ s.valuta }}</strong></td>
     <td><span class="badge badge-stato-{{ stato_s }}">{{ etichette_stato[stato_s] }}</span></td>
-    <td class="col-actions">
-        <a class="icon-btn" href="/servizi/{{ s.id }}/storico" title="Storico" aria-label="Storico">
-            <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 14"/></svg>
-        </a>
-        {% with href = "/servizi/" ~ s.id ~ "/modifica" %}
-        {% include "partials/_btn_modifica.html" %}
-        {% endwith %}
-        {% with url = "/servizi/" ~ s.id,
-                target = "#servizio-" ~ s.id,
-                conferma = "Eliminare il servizio '" ~ s.descrizione ~ "'?" %}
-        {% include "partials/_btn_elimina.html" %}
-        {% endwith %}
-    </td>
 </tr>

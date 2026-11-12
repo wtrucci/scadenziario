@@ -224,6 +224,18 @@ le scelte tecniche quando non sono banali.
   - Scelto un cliente, la tendina Referente elenca **solo i suoi referenti**;
     un referente rimasto da un altro cliente viene scartato, non applicato
     (`filtri.referente_coerente`).
+- **Scheda del servizio**: in Servizi, Dashboard, Riepilogo da fatturare e
+  Offerte un clic sulla riga (`tr[data-anteprima]`) apre una finestra con
+  tutti i dati del servizio (`GET /servizi/{id}/anteprima`, letta dal server
+  al momento), con Storico e Modifica; "Modifica" riporta alla pagina di
+  partenza con i suoi filtri. Queste tabelle NON hanno una colonna Azioni:
+  le azioni stanno nella scheda; restano nella riga solo i pulsanti di stato
+  (fatturato, offerta inviata). Il clic su un pulsante della riga o una
+  selezione di testo non aprono la scheda.
+  - **Elimina** compare nella scheda SOLO aprendola da Servizi
+    (`?elimina=1`), dove la riga è il contratto. In dashboard, riepilogo e
+    offerte la riga è una scadenza o un rinnovo: "elimina" verrebbe letto
+    come "elimina questa fattura" e cancellerebbe l'intero contratto.
 - **Preferenze di visualizzazione delle tabelle** (colonne visibili, righe per
   pagina, ordinamento, "nascondi contratti scaduti e disdetti"): al contrario
   dei filtri sono scelte durature, quindi si salvano in `localStorage` e si

@@ -114,20 +114,30 @@ class TestModificaDaDashboard(unittest.TestCase):
         dati.update(extra)
         return dati
 
-    def test_riga_dashboard_ha_il_link_di_modifica_col_ritorno(self):
+    def test_riga_dashboard_apre_la_scheda_senza_elimina(self):
+        # The pencil in the row gave way to the service sheet, opened by a
+        # click on the row; app.js adds the page's URL as "ritorno", which the
+        # sheet hands on to its "Modifica" (see test_anteprima). No "elimina":
+        # a dashboard row is one occurrence, not the contract.
         r = self.client.get("/?mese=2026-09&cliente=" + str(self.cliente_id))
         self.assertEqual(r.status_code, 200)
-        self.assertIn(f"/servizi/{self.servizio_id}/modifica?ritorno=", r.text)
+        self.assertIn(f'data-anteprima="/servizi/{self.servizio_id}/anteprima"', r.text)
+        self.assertNotIn("elimina=1", r.text)
+        scheda = self.client.get(
+            f"/servizi/{self.servizio_id}/anteprima",
+            params={"ritorno": f"/?mese=2026-09&cliente={self.cliente_id}"},
+        ).text
+        self.assertIn(f"/servizi/{self.servizio_id}/modifica?ritorno=", scheda)
         # The return URL keeps both the month and the active filter.
-        self.assertIn("mese%3D2026-09", r.text)
-        self.assertIn("cliente%3D" + str(self.cliente_id), r.text)
+        self.assertIn("mese%3D2026-09", scheda)
+        self.assertIn("cliente%3D" + str(self.cliente_id), scheda)
+        self.assertNotIn("hx-delete", scheda)
 
-    def test_riga_riepilogo_ha_il_link_di_modifica_col_ritorno(self):
+    def test_riga_riepilogo_apre_la_scheda(self):
         r = self.client.get("/riepilogo?mese=2026-09")
         self.assertEqual(r.status_code, 200)
-        self.assertIn(
-            f"/servizi/{self.servizio_id}/modifica?ritorno=/riepilogo%3Fmese%3D2026-09", r.text
-        )
+        self.assertIn(f'data-anteprima="/servizi/{self.servizio_id}/anteprima"', r.text)
+        self.assertNotIn("elimina=1", r.text)
 
     def test_salvataggio_torna_al_riepilogo(self):
         r = self.client.post(

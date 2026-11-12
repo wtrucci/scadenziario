@@ -178,8 +178,10 @@ class TestPaginaStorico(unittest.TestCase):
     def test_servizio_inesistente_404(self):
         self.assertEqual(self.client.get("/servizi/999/storico").status_code, 404)
 
-    def test_link_dalla_lista_servizi(self):
-        h = self.client.get("/servizi").text
+    def test_link_dalla_scheda_del_servizio(self):
+        # The services list has no actions column any more: the history is
+        # reached from the sheet that opens when the row is clicked.
+        h = self.client.get(f"/servizi/{self.servizio_id}/anteprima").text
         self.assertIn(f"/servizi/{self.servizio_id}/storico", h)
 
 

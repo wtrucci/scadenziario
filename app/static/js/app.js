@@ -295,50 +295,87 @@ function applicaColonne(tabella) {
 function apriDialogoColonne(tabella) {
     var tableId = tabella.getAttribute("data-table-id");
     var headerRow = tabella.tHead.rows[0];
-    var nascoste = colonneNascoste(tabella);
 
+    // Laid out as a settings sheet: title with "Fine" on the right, then a
+    // grouped list with one switch per column, then a footnote. The
+    // padding sits on the inner box, so a click on the <dialog> itself is
+    // a click on the backdrop and closes it.
     var dialog = document.createElement("dialog");
     dialog.className = "colonne-dialog";
+    dialog.setAttribute("aria-labelledby", "colonne-titolo");
+    var corpo = document.createElement("div");
+    corpo.className = "colonne-corpo";
+    dialog.appendChild(corpo);
 
+    var testa = document.createElement("div");
+    testa.className = "colonne-testa";
     var titolo = document.createElement("h3");
+    titolo.id = "colonne-titolo";
     titolo.textContent = "Colonne visibili";
-    dialog.appendChild(titolo);
+    var fine = document.createElement("button");
+    fine.type = "button";
+    fine.className = "btn-testo";
+    fine.textContent = "Fine";
+    fine.addEventListener("click", function () { dialog.close(); });
+    testa.appendChild(titolo);
+    testa.appendChild(fine);
+    corpo.appendChild(testa);
 
+    var gruppo = document.createElement("div");
+    gruppo.className = "scheda-gruppo";
+    var interruttori = [];
+
+    function aggiorna() {
+        var nascoste = interruttori
+            .filter(function (v) { return !v.input.checked; })
+            .map(function (v) { return v.indice; });
+        salvaColonneNascoste(tabella, nascoste);
+        document.querySelectorAll('table[data-table-id="' + tableId + '"]').forEach(applicaColonne);
+        mostraTutte.disabled = nascoste.length === 0;
+    }
+
+    var nascoste = colonneNascoste(tabella);
     Array.prototype.forEach.call(headerRow.children, function (th, i) {
         // Skip the column-picker button's own (usually label-less) cell.
         if (th.classList.contains("col-actions-header") && !th.firstChild.textContent.trim() && th.children.length <= 1) return;
-        var testo = nomeColonna(th, i);
 
-        var label = document.createElement("label");
-        label.className = "colonna-opzione";
-        var checkbox = document.createElement("input");
-        checkbox.type = "checkbox";
-        checkbox.checked = nascoste.indexOf(i) === -1;
-        checkbox.addEventListener("change", function () {
-            var attuali = colonneNascoste(tabella);
-            if (checkbox.checked) {
-                attuali = attuali.filter(function (n) { return n !== i; });
-            } else if (attuali.indexOf(i) === -1) {
-                attuali.push(i);
-            }
-            salvaColonneNascoste(tabella, attuali);
-            document.querySelectorAll('table[data-table-id="' + tableId + '"]').forEach(applicaColonne);
-        });
-        label.appendChild(checkbox);
-        label.appendChild(document.createTextNode(testo));
-        dialog.appendChild(label);
+        var riga = document.createElement("label");
+        riga.className = "scheda-riga colonna-opzione";
+        var nome = document.createElement("span");
+        nome.textContent = nomeColonna(th, i);
+        var input = document.createElement("input");
+        input.type = "checkbox";
+        input.className = "interruttore";
+        input.checked = nascoste.indexOf(i) === -1;
+        input.addEventListener("change", aggiorna);
+        riga.appendChild(nome);
+        riga.appendChild(input);
+        gruppo.appendChild(riga);
+        interruttori.push({ indice: i, input: input });
     });
+    corpo.appendChild(gruppo);
 
-    var azioni = document.createElement("div");
-    azioni.className = "colonne-dialog-actions";
-    var chiudi = document.createElement("button");
-    chiudi.type = "button";
-    chiudi.className = "btn btn-secondary";
-    chiudi.textContent = "Chiudi";
-    chiudi.addEventListener("click", function () { dialog.close(); });
-    azioni.appendChild(chiudi);
-    dialog.appendChild(azioni);
+    var piede = document.createElement("div");
+    piede.className = "colonne-piede";
+    var nota = document.createElement("span");
+    nota.className = "muted";
+    nota.textContent = "La scelta resta salvata in questo browser.";
+    var mostraTutte = document.createElement("button");
+    mostraTutte.type = "button";
+    mostraTutte.className = "btn-testo";
+    mostraTutte.textContent = "Mostra tutte";
+    mostraTutte.disabled = nascoste.length === 0;
+    mostraTutte.addEventListener("click", function () {
+        interruttori.forEach(function (v) { v.input.checked = true; });
+        aggiorna();
+    });
+    piede.appendChild(nota);
+    piede.appendChild(mostraTutte);
+    corpo.appendChild(piede);
 
+    dialog.addEventListener("click", function (e) {
+        if (e.target === dialog) dialog.close();
+    });
     dialog.addEventListener("close", function () { dialog.remove(); });
     document.body.appendChild(dialog);
     dialog.showModal();
@@ -577,6 +614,40 @@ document.body.addEventListener("clienteCreato", function (e) {
     }
     var dialog = document.getElementById("nuovo-cliente-dialog");
     if (dialog) dialog.close();
+});
+
+// Service sheet: clicking a table row marked data-anteprima opens a dialog
+// with everything about that service, fetched from the server at that moment
+// (routes/servizi.anteprima). The row keeps its own controls: a click on a
+// link, button or field inside it does what it always did. Nor does it open
+// while text is selected — dragging across a serial number to copy it is
+// a click too, as far as the browser is concerned.
+// The page the row was clicked on travels as "ritorno", so the sheet's
+// "Modifica" brings the user back here, filters included.
+document.addEventListener("click", function (e) {
+    var riga = e.target.closest("tr[data-anteprima]");
+    if (!riga) return;
+    if (e.target.closest("a, button, input, select, textarea, label")) return;
+    var selezione = window.getSelection();
+    if (selezione && selezione.toString().trim() !== "") return;
+    var dialog = document.getElementById("anteprima-dialog");
+    if (!dialog || typeof htmx === "undefined") return;
+    var base = riga.getAttribute("data-anteprima");
+    var url = base + (base.indexOf("?") === -1 ? "?" : "&") +
+        "ritorno=" + encodeURIComponent(location.pathname + location.search);
+    // Opened once the content is in, so it never flashes up empty.
+    htmx.ajax("GET", url, { target: "#anteprima-corpo", swap: "innerHTML" })
+        .then(function () {
+            if (!dialog.open) dialog.showModal();
+            dialog.scrollTop = 0;   // a sheet opened before may have been scrolled
+        });
+});
+
+// A click on the dimmed backdrop closes the sheet, as on a phone. The
+// backdrop belongs to the <dialog> element itself, so a click whose target
+// is the dialog (not something inside it) landed outside the content.
+document.addEventListener("click", function (e) {
+    if (e.target.id === "anteprima-dialog") e.target.close();
 });
 
 // Any button marked data-chiudi-dialog closes the <dialog> it sits in.

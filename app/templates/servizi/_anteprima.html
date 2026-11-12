@@ -1,0 +1,76 @@
+{# The read-only sheet of one service, shown in #anteprima-dialog when a table
+   row is clicked (see app.js and routes/servizi.anteprima). Laid out as
+   grouped lists, like a settings screen: label on the left, value on the
+   right, empty values as a dash so every sheet has the same shape.
+   Context: s (Servizio), cadenza, prossima, stato_s, etichetta_stato,
+   valore_annuo, ritorno, elimina (show the delete button). #}
+{% macro riga(etichetta, valore) %}
+<div class="scheda-riga">
+    <span class="scheda-etichetta">{{ etichetta }}</span>
+    <span class="scheda-valore">{% if valore %}{{ valore }}{% else %}<span class="muted">—</span>{% endif %}</span>
+</div>
+{% endmacro %}
+
+{# tabindex + autofocus: when the dialog opens the browser focuses this box,
+   at the top of the sheet. Without it, it focused the first button — at the
+   bottom — and the sheet opened already scrolled down. #}
+<div class="scheda" tabindex="-1" autofocus>
+<header class="scheda-testa">
+    <div>
+        <h3 id="anteprima-titolo">{{ s.descrizione }}</h3>
+        <p class="muted">{{ s.cliente.nome }}</p>
+    </div>
+    <span class="badge badge-stato-{{ stato_s }}">{{ etichetta_stato }}</span>
+</header>
+
+<div class="scheda-gruppo-titolo">Servizio</div>
+<div class="scheda-gruppo">
+    {{ riga("Cliente", s.cliente.nome) }}
+    {{ riga("Referente", s.referente) }}
+    {{ riga("Sede", s.luogo_installazione) }}
+    {{ riga("Tipo", s.tipo.value|capitalize) }}
+    <div class="scheda-riga">
+        <span class="scheda-etichetta">Numero seriale</span>
+        <span class="scheda-valore col-seriale">{% if s.numero_seriale %}{{ s.numero_seriale }}{% else %}<span class="muted">—</span>{% endif %}</span>
+    </div>
+</div>
+
+<div class="scheda-gruppo-titolo">Scadenza e rinnovo</div>
+<div class="scheda-gruppo">
+    {{ riga("Prossima scadenza", prossima.strftime('%d/%m/%Y')) }}
+    {{ riga("Decorrenza del ciclo corrente", s.data_scadenza.strftime('%d/%m/%Y')) }}
+    {{ riga("Data inizio", s.data_inizio.strftime('%d/%m/%Y') if s.data_inizio else None) }}
+    {{ riga("Cadenza", cadenza) }}
+    {{ riga("Durata impegno", (s.durata_impegno_mesi ~ " mesi") if s.durata_impegno_mesi else "Una fattura per ciclo") }}
+    {{ riga("Rinnovo automatico", "Sì" if s.rinnovo_automatico else "No") }}
+    {{ riga("Preavviso", s.preavviso_giorni ~ " giorni") }}
+</div>
+
+<div class="scheda-gruppo-titolo">Importi</div>
+<div class="scheda-gruppo">
+    {{ riga("Importo unitario", "%.2f"|format(s.importo) ~ " " ~ s.valuta) }}
+    {{ riga("Quantità", s.quantita) }}
+    {{ riga("Totale per scadenza", "%.2f"|format(s.totale) ~ " " ~ s.valuta) }}
+    {{ riga("Valore annuo", ("%.2f"|format(valore_annuo) ~ " " ~ s.valuta) if valore_annuo is not none else None) }}
+</div>
+
+{% if s.note %}
+<div class="scheda-gruppo-titolo">Note</div>
+<div class="scheda-gruppo scheda-note">{{ s.note }}</div>
+{% endif %}
+
+<div class="form-actions">
+    {# Destructive, so on its own at the far left and red — and only when the
+       sheet was opened from the services list (see routes/servizi.anteprima).
+       The server answers with HX-Refresh: the page reloads as it was (same
+       URL, same filters) without the deleted service. #}
+    {% if elimina %}
+    <button type="button" class="btn btn-danger"
+            hx-delete="/servizi/{{ s.id }}?da=scheda" hx-swap="none"
+            hx-confirm="Eliminare il servizio '{{ s.descrizione }}' di {{ s.cliente.nome }}? L'operazione non si può annullare.">Elimina</button>
+    {% endif %}
+    <a class="btn btn-secondary" href="/servizi/{{ s.id }}/storico">Storico</a>
+    <a class="btn" href="/servizi/{{ s.id }}/modifica?ritorno={{ ritorno|urlencode }}">Modifica</a>
+    <button type="button" class="btn btn-secondary" data-chiudi-dialog>Chiudi</button>
+</div>
+</div>

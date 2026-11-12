@@ -99,8 +99,6 @@ def _contesto(db: Session, stato: str | None, q: str | None) -> dict:
         # same behaviour as the dashboard summary cards.
         "link_stati": {st: url(None if st == stato_val else st) for st in FILTRI_STATO},
         "filtri": {"stato": stato_val or "", "q": ricerca},
-        # Where the edit form brings you back to: this page, as you left it.
-        "ritorno": url(stato_val),
         "in_locale": _in_locale,
         "giorni_orizzonte": offerte.GIORNI_ORIZZONTE,
         "giorni_urgenza": offerte.GIORNI_URGENZA,

@@ -17,6 +17,8 @@
     --muted: #6e6e73;
     --text-3: #86868b;
     --border: rgba(60, 60, 67, 0.18);
+    /* The sidebar sits a shade apart from the page, as in a Mac app. */
+    --sidebar-bg: #ebebee;
     --primary: #0071e3;
     --primary-hover: #0077ed;
     --green: #34c759;
@@ -86,6 +88,7 @@
     --muted: #98989d;
     --text-3: #6e6e73;
     --border: rgba(84, 84, 88, 0.55);
+    --sidebar-bg: #1c1c1e;
     --primary: #0a84ff;
     --primary-hover: #409cff;
     --green: #30d158;
@@ -134,15 +137,31 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--primary); }
 /* The brand has always linked to the dashboard, but styled as plain text it
    did not read as clickable — hence the hover state and the pointer. */
 .brand {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
     font-weight: 700;
     font-size: 17px;
     letter-spacing: -0.015em;
     color: var(--text);
     text-decoration: none;
     cursor: pointer;
-    padding: 0 0.6rem;
+    padding: 0 0.5rem;
 }
-.brand:hover { color: var(--primary); text-decoration: none; }
+.brand:hover { color: var(--text); text-decoration: none; }
+
+/* The app's icon: a rounded tile in the accent colour with a white glyph. */
+.brand-icona {
+    display: grid;
+    place-items: center;
+    width: 30px;
+    height: 30px;
+    flex: none;
+    border-radius: 8px;
+    background: var(--primary);
+    color: #fff;
+}
+.brand-icona svg { width: 18px; height: 18px; stroke-width: 1.9; }
 .brand:focus-visible {
     outline: none;
     box-shadow: var(--focus-ring);
@@ -168,8 +187,8 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--primary); }
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 2.1rem;
-    height: 2.1rem;
+    width: 1.9rem;
+    height: 1.9rem;
     padding: 0;
     background: var(--fill);
     border: none;
@@ -214,8 +233,8 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--primary); }
     height: 100vh;
     box-sizing: border-box;
     overflow-y: auto;
-    padding: 1.25rem 0.75rem;
-    background: var(--bg);
+    padding: 1.25rem 0.75rem 1rem;
+    background: var(--sidebar-bg);
     border-right: 1px solid var(--border);
 }
 
@@ -226,26 +245,41 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--primary); }
     flex: 1;
 }
 
+/* Section title above a group of entries: small, grey, quiet. */
+.sidebar-sezione {
+    padding: 0.9rem 0.6rem 0.3rem;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-3);
+}
+.sidebar-sezione:first-child { padding-top: 0.25rem; }
+
+/* An entry: the icon in the accent colour, the label in the text colour.
+   The selected entry is filled with the accent and turns white, icon
+   included — the selection of a Mac sidebar. */
 .sidebar-nav a {
     display: flex;
     align-items: center;
-    gap: 0.65rem;
-    min-height: 34px;
-    padding: 0.35rem 0.6rem;
+    gap: 0.6rem;
+    min-height: 32px;
+    padding: 0.3rem 0.6rem;
     border-radius: 8px;
     color: var(--text);
     text-decoration: none;
     font-size: 14px;
     transition: background 0.2s var(--ease);
 }
+.sidebar-nav a .icon { color: var(--primary); }
 
 .sidebar-nav a:hover { background: var(--fill); color: var(--text); text-decoration: none; }
 
-.sidebar-nav a.active {
-    background: color-mix(in srgb, var(--primary) 12%, transparent);
-    color: var(--primary);
+.sidebar-nav a.active,
+.sidebar-nav a.active:hover {
+    background: var(--primary);
+    color: #fff;
     font-weight: 500;
 }
+.sidebar-nav a.active .icon { color: #fff; }
 
 /* Counter next to a menu entry (offers to chase). Empty = nothing to show. */
 .nav-badge {
@@ -263,26 +297,56 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--primary); }
 }
 
 .nav-badge:empty { display: none; }
+/* On the blue selection a red pill would clash: white with red figures. */
+.sidebar-nav a.active .nav-badge { background: #fff; color: var(--red-text); }
 
+/* Account row at the bottom: avatar + name on the left, theme and sign-out
+   as round icon buttons on the right, the version on its own line below. */
 .sidebar-footer {
     display: flex;
     align-items: center;
     justify-content: space-between;
     flex-wrap: wrap;
-    gap: 0.75rem;
+    gap: 0.6rem;
     /* Sticks to the bottom of the sidebar even without .sidebar-nav's flex:1
        spacer above it (logged-out state has no nav, e.g. the login page). */
     margin-top: auto;
-    padding: 1rem 0.6rem 0;
+    padding: 0.9rem 0.5rem 0;
     border-top: 1px solid var(--border);
 }
 
 .sidebar-user {
     display: flex;
     align-items: center;
-    gap: 0.6rem;
+    gap: 0.55rem;
+    min-width: 0;
     font-size: 13px;
+    font-weight: 500;
 }
+.sidebar-user .nav-user {
+    color: var(--text);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* Initials in a circle, as on an account row. */
+.avatar {
+    display: grid;
+    place-items: center;
+    width: 30px;
+    height: 30px;
+    flex: none;
+    border-radius: 50%;
+    background: color-mix(in srgb, var(--primary) 16%, transparent);
+    color: var(--primary);
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+}
+
+.sidebar-azioni { display: flex; gap: 0.35rem; margin-left: auto; }
+a.theme-toggle, a.theme-toggle:hover { text-decoration: none; }
 
 /* Its own line under the theme toggle and the user: the footer row is already
    a space-between pair, and squeezing a third item in there would crowd both.
@@ -320,7 +384,17 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--primary); }
         overflow-x: auto;
     }
     .sidebar-nav a { flex: none; }
-    .sidebar-footer { margin-top: 0; border-top: none; padding-top: 0; }
+    .sidebar-sezione { display: none; }
+    /* On a phone the account row shares the line with the app name: just
+       the initials and the two icons, no name and no version. */
+    .sidebar-footer {
+        margin: 0 0 0 auto;
+        border-top: none;
+        padding: 0;
+        flex-wrap: nowrap;
+    }
+    .sidebar-user .nav-user,
+    .app-version { display: none; }
 }
 
 /* ------------------------------------------------------------------ Layout */
@@ -417,7 +491,93 @@ dialog.colonne-dialog {
     box-shadow: var(--shadow-pop);
 }
 
-dialog.colonne-dialog { max-width: 340px; }
+dialog.colonne-dialog { max-width: 380px; }
+
+/* ------------------------------------------------------------ Service sheet */
+
+/* Rows that open the service sheet when clicked (see app.js). */
+tr[data-anteprima] { cursor: pointer; }
+
+/* The sheet itself: a taller sheet on the grey page colour, so its white
+   groups stand out as in a settings screen. Scrolls inside when the window
+   is short, keeping the buttons reachable. The padding sits on the inner
+   box: on the <dialog> it would be part of the backdrop-click area. */
+dialog.dialog-scheda {
+    width: 100%;
+    max-width: 560px;
+    max-height: 88vh;
+    padding: 0;
+    overflow-y: auto;
+    background: var(--bg);
+    color: var(--text);
+    border: none;
+    border-radius: 20px;
+    box-shadow: var(--shadow-pop);
+}
+dialog.dialog-scheda::backdrop {
+    background: rgba(0, 0, 0, 0.35);
+    backdrop-filter: blur(4px);
+}
+#anteprima-corpo { padding: 1.5rem; }
+.scheda:focus { outline: none; }
+/* The buttons stay pinned to the bottom of the sheet on a translucent bar,
+   so Modifica/Storico/Chiudi never need scrolling down to. The negative
+   margins stretch the bar across the content padding, edge to edge. */
+#anteprima-corpo .form-actions {
+    position: sticky;
+    bottom: 0;
+    justify-content: flex-end;
+    margin: 1.5rem -1.5rem -1.5rem;
+    padding: 0.85rem 1.5rem;
+    background: color-mix(in srgb, var(--bg) 78%, transparent);
+    backdrop-filter: saturate(180%) blur(20px);
+    -webkit-backdrop-filter: saturate(180%) blur(20px);
+    border-top: 1px solid var(--border);
+}
+/* Elimina on its own at the far left, away from the everyday buttons. */
+#anteprima-corpo .form-actions .btn-danger { margin-right: auto; }
+
+.scheda-testa {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 1rem;
+    margin-bottom: 1.25rem;
+}
+.scheda-testa h3 { margin: 0; font-size: 22px; font-weight: 700; letter-spacing: -0.015em; }
+.scheda-testa p { margin: 0.15rem 0 0; }
+
+/* Grouped list: small header, white rounded group, one row per field with
+   the label on the left and the value on the right, hairlines between rows. */
+.scheda-gruppo-titolo {
+    font-size: 13px;
+    color: var(--muted);
+    padding: 0 1rem 0.35rem;
+    margin-top: 1.25rem;
+}
+.scheda-gruppo {
+    background: var(--surface);
+    border-radius: 14px;
+    overflow: hidden;
+}
+.scheda-riga {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 1rem;
+    min-height: 44px;
+    padding: 0.7rem 1rem;
+    font-size: 15px;
+}
+.scheda-riga + .scheda-riga { border-top: 1px solid var(--border); }
+.scheda-etichetta { color: var(--text); }
+.scheda-valore {
+    color: var(--muted);
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+    overflow-wrap: anywhere;
+}
+.scheda-note { padding: 0.8rem 1rem; font-size: 15px; white-space: pre-line; }
 
 dialog[open] { animation: comparsa 0.25s var(--ease); }
 
@@ -475,6 +635,14 @@ dialog.colonne-dialog::backdrop {
 
 .btn.btn-secondary:hover { filter: brightness(0.96); color: var(--primary); }
 :root[data-theme="dark"] .btn.btn-secondary:hover { filter: brightness(1.2); }
+
+/* Destructive: red text on the grey fill, never a red slab. */
+.btn.btn-danger {
+    background: var(--fill);
+    color: var(--red-text);
+}
+.btn.btn-danger:hover { filter: brightness(0.96); color: var(--red-text); }
+:root[data-theme="dark"] .btn.btn-danger:hover { filter: brightness(1.2); }
 
 .btn-small {
     min-height: 28px;
@@ -611,20 +779,74 @@ th.col-actions-header.sortable .col-toggle-btn { order: 3; }
 }
 .col-toggle-btn .icon { width: 15px; height: 15px; }
 
-dialog.colonne-dialog h3 { margin: 0 0 1rem; font-size: 17px; font-weight: 600; }
-.colonna-opzione {
+/* The column picker, laid out as a settings sheet: grey sheet, white
+   grouped list (.scheda-gruppo/.scheda-riga, shared with the service
+   sheet) with a switch per column, "Fine" in the title row. */
+dialog.colonne-dialog { padding: 0; background: var(--bg); }
+.colonne-corpo { padding: 1.1rem 1.25rem 1.25rem; }
+.colonne-testa {
     display: flex;
     align-items: center;
-    gap: 0.6rem;
-    min-height: 36px;
-    padding: 0.2rem 0;
-    border-bottom: 1px solid var(--border);
-    font-size: 15px;
+    justify-content: space-between;
+    gap: 1rem;
+    margin-bottom: 1rem;
+}
+.colonne-testa h3 { margin: 0; font-size: 17px; font-weight: 600; }
+.colonna-opzione { align-items: center; cursor: pointer; padding-block: 0.4rem; }
+.colonne-piede {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 0.5rem 1rem 0;
+    font-size: 13px;
+}
+
+/* Plain text button in the accent colour, as "Fine" at the top of a sheet. */
+.btn-testo {
+    padding: 0.25rem 0;
+    border: none;
+    background: none;
+    color: var(--primary);
+    font: inherit;
+    font-weight: 600;
     cursor: pointer;
 }
-.colonna-opzione:last-of-type { border-bottom: none; }
-.colonna-opzione input { width: auto; }
-.colonne-dialog-actions { display: flex; justify-content: flex-end; margin-top: 1.25rem; }
+.colonne-piede .btn-testo { font-weight: 500; white-space: nowrap; }
+.btn-testo:hover { opacity: 0.75; }
+.btn-testo:disabled { color: var(--text-3); opacity: 1; cursor: default; }
+.btn-testo:focus-visible { outline: none; box-shadow: var(--focus-ring); border-radius: 6px; }
+
+/* On/off switch drawn on a plain checkbox: green track when on, white knob
+   that slides across. Still a real checkbox, so keyboard and labels work. */
+input.interruttore {
+    appearance: none;
+    -webkit-appearance: none;
+    position: relative;
+    flex: none;
+    width: 51px;
+    height: 31px;
+    margin: 0;
+    border-radius: 999px;
+    background: var(--fill);
+    cursor: pointer;
+    transition: background 0.2s var(--ease);
+}
+input.interruttore::before {
+    content: "";
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 27px;
+    height: 27px;
+    border-radius: 50%;
+    background: #fff;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.18), 0 0 1px rgba(0, 0, 0, 0.12);
+    transition: transform 0.2s var(--ease);
+}
+input.interruttore:checked { background: var(--green); }
+input.interruttore:checked::before { transform: translateX(20px); }
+input.interruttore:focus-visible { outline: none; box-shadow: var(--focus-ring); }
 
 /* Pagination bar, one per table (see applicaPaginazione in app.js). */
 .paginazione {

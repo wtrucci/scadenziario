@@ -72,9 +72,11 @@
             <th class="sortable col-num">Qtà</th>
             <th class="sortable col-num">Importo unit.</th>
             <th class="sortable col-num">Totale</th>
-            <th class="sortable">Stato</th>
-            <th class="col-actions-header">
-                Azioni
+            {# No "Azioni" column: clicking a row opens the service sheet, which
+               holds Storico, Modifica and Elimina. The column picker rides on
+               the last header instead, as on the notifications page. #}
+            <th class="sortable col-actions-header">
+                <span class="th-label">Stato</span>
                 {% include "partials/_col_toggle_btn.html" %}
             </th>
         </tr>

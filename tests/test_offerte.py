@@ -182,7 +182,9 @@ class TestRotteOfferte(_BaseDb):
         self.assertEqual(r.status_code, 200)
         self.assertIn("Firewall", r.text)
         self.assertIn(f"/offerte/{s.id}/{s.data_scadenza.isoformat()}/inviata", r.text)
-        self.assertIn(f"/servizi/{s.id}/modifica?ritorno=/offerte", r.text)
+        # A click on the row opens the service sheet (no "elimina" here).
+        self.assertIn(f'data-anteprima="/servizi/{s.id}/anteprima"', r.text)
+        self.assertNotIn("elimina=1", r.text)
 
     def test_colonne_seriale_e_prezzo(self):
         self._servizio(data_scadenza=self.oggi + timedelta(days=20),

@@ -1,7 +1,7 @@
 {# Results region swapped by HTMX while you type in the search box and after
    each "offerta inviata" toggle; also included by the full page.
    Context: righe (services.offerte.RigaOfferta), conteggi, link_stati,
-   filtri, ritorno, in_locale (UTC -> local time). #}
+   filtri, in_locale (UTC -> local time). #}
 {# Out-of-band swaps only make sense in an HTMX response: on a full page load
    this partial is rendered inside the page, which already has these elements
    in its header. #}
@@ -42,8 +42,10 @@
             <th class="sortable col-num">Quando</th>
             <th class="sortable col-num">Prezzo unit.</th>
             <th class="sortable col-num">Totale</th>
-            <th class="sortable">Offerta</th>
-            <th class="col-actions-header">
+            {# No actions column: clicking a row opens the service sheet. The
+               column picker rides on the last header. #}
+            <th class="sortable col-actions-header">
+                <span class="th-label">Offerta</span>
                 {% include "partials/_col_toggle_btn.html" %}
             </th>
         </tr>
@@ -53,7 +55,9 @@
         {% set s = r.servizio %}
         {% set occ = r.rinnovo %}
         {% set rowcls = {"scaduta": "row-da-fatturare", "urgente": "row-in-scadenza", "inviata": "row-fatturato"}.get(r.stato, "") %}
-        <tr class="{{ rowcls }}"{% if s.note %} title="{{ s.note }}"{% endif %}>
+        {# data-anteprima: a click on the row (not on its button) opens the
+           service sheet — see app.js. #}
+        <tr class="{{ rowcls }}" data-anteprima="/servizi/{{ s.id }}/anteprima"{% if s.note %} title="{{ s.note }}"{% endif %}>
             <td class="cell-primary">{{ s.cliente.nome }}</td>
             <td>{{ s.descrizione }}</td>
             <td class="cell-secondary col-seriale">{% if s.numero_seriale %}{{ s.numero_seriale }}{% else %}—{% endif %}</td>
@@ -80,11 +84,6 @@
                         title="{% if r.inviata %}Inviata il {{ in_locale(r.inviata_il).strftime('%d/%m/%Y') }} — clic per segnarla come da inviare{% else %}Segna come inviata{% endif %}">
                     {% if r.inviata %}✓ Inviata {{ in_locale(r.inviata_il).strftime('%d/%m') }}{% else %}Da inviare{% endif %}
                 </button>
-            </td>
-            <td class="col-actions">
-                {% with href = "/servizi/" ~ s.id ~ "/modifica?ritorno=" ~ ritorno|urlencode %}
-                {% include "partials/_btn_modifica.html" %}
-                {% endwith %}
             </td>
         </tr>
         {% endfor %}
