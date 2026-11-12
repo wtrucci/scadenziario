@@ -52,19 +52,33 @@ def clienti_disponibili(db: Session) -> list[Cliente]:
     return db.scalars(select(Cliente).order_by(Cliente.nome)).all()
 
 
-def referenti_disponibili(db: Session) -> list[str]:
+def referenti_disponibili(db: Session, cliente_id: int | None = None) -> list[str]:
     """Distinct non-empty referente values, ordered alphabetically.
 
     NULL/empty referenti are excluded so the dropdown only lists real choices.
+    With ``cliente_id`` only that customer's referenti are listed: once a
+    customer is picked in a filter bar, offering everybody else's would only
+    lead to an empty table.
     """
-    righe = db.scalars(
+    query = (
         select(Servizio.referente)
         .where(Servizio.referente.is_not(None))
         .where(Servizio.referente != "")
-        .distinct()
-        .order_by(Servizio.referente)
-    ).all()
-    return list(righe)
+    )
+    if cliente_id is not None:
+        query = query.where(Servizio.cliente_id == cliente_id)
+    return list(db.scalars(query.distinct().order_by(Servizio.referente)).all())
+
+
+def referente_coerente(referente: str | None, referenti: list[str]) -> str | None:
+    """The referente filter, dropped when it does not belong to the list.
+
+    Picking another customer while a referente is selected would otherwise
+    keep a filter that can match nothing — an empty table, with the referente
+    dropdown (now listing only the new customer's people) unable to show
+    what is filtering it. Dropping it is what the user means anyway.
+    """
+    return referente if referente in referenti else None
 
 
 def descrizioni_disponibili(db: Session) -> list[str]:

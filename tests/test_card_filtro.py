@@ -178,7 +178,17 @@ class TestNessunDoppioAzzera(unittest.TestCase):
         h = self.client.get("/", params={"mese": MESE, "stato": "da_fatturare"}).text
         self.assertEqual(h.count("Azzera filtri"), 1)
         self.assertEqual(h.count('id="filtri-reset"'), 1)
-        self.assertEqual(h.count('id="filtri-badge"'), 1)
+
+    def test_filtri_sempre_visibili_non_in_una_finestra(self):
+        # The filters used to hide behind a funnel icon, in a <dialog>: now
+        # they sit in a bar on the page, on both pages that have them.
+        for url in ("/?mese=" + MESE, "/servizi"):
+            with self.subTest(url=url):
+                h = self.client.get(url).text
+                self.assertIn('class="barra-filtri"', h)
+                self.assertIn('id="f-cliente"', h)
+                self.assertNotIn("filtri-dialog", h)
+        self.assertIn('id="nascondi-scaduti"', self.client.get("/servizi").text)
 
     def test_servizi_filtrati_hanno_un_solo_azzera(self):
         h = self.client.get("/servizi", params={"q": "licenza"}).text
@@ -188,12 +198,12 @@ class TestNessunDoppioAzzera(unittest.TestCase):
         h = self.client.get("/clienti", params={"q": "alfa"}).text
         self.assertEqual(h.count("Azzera ricerca"), 1)
 
-    def test_la_risposta_htmx_porta_ancora_lo_swap(self):
-        # The header lives outside the swapped region, so the HTMX response
-        # must still carry it — otherwise the button would never appear.
-        h = self.client.get(
-            "/", params={"mese": MESE, "stato": "da_fatturare"},
-            headers={"HX-Request": "true"},
-        ).text
-        self.assertIn('hx-swap-oob="true"', h)
-        self.assertIn("Azzera filtri", h)
+    def test_la_risposta_htmx_porta_l_azzera(self):
+        # The filter bar sits inside the swapped region on both pages, so the
+        # HTMX response carries "Azzera filtri" with it — exactly once.
+        for url, params in (("/servizi", {"stato": "attivo"}),
+                            ("/", {"mese": MESE, "stato": "da_fatturare"})):
+            with self.subTest(url=url):
+                h = self.client.get(url, params=params, headers={"HX-Request": "true"}).text
+                self.assertEqual(h.count("Azzera filtri"), 1)
+                self.assertNotIn("hx-swap-oob", h)

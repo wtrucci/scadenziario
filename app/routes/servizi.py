@@ -324,16 +324,21 @@ def _valida(
 # ---------------------------------------------------------------------------
 
 def _normalizza_filtri(
+    db: Session,
     cliente: str | None, referente: str | None, stato: str | None, q: str | None
 ) -> tuple[int | None, str | None, str | None, str]:
     """Turn the raw query params into typed, validated filter values.
 
     Anything unrecognised is dropped rather than rejected: these arrive from
     links and bookmarks, and a stale value should mean "no filter", not an
-    error page.
+    error page. That includes a referente who is not one of the chosen
+    customer's (see filtri.referente_coerente).
     """
     cliente_id = int(cliente) if (cliente and cliente.isdigit()) else None
     referente_val = referente.strip() if referente and referente.strip() else None
+    referente_val = filtri.referente_coerente(
+        referente_val, filtri.referenti_disponibili(db, cliente_id)
+    )
     stato_val = stato if stato in STATI_CONTRATTO else None
     return cliente_id, referente_val, stato_val, (q or "").strip()
 
@@ -393,7 +398,7 @@ def lista_servizi(
     db: Session = Depends(get_db),
     user: Utente = Depends(require_login),
 ):
-    cliente_id, referente_val, stato_val, ricerca = _normalizza_filtri(cliente, referente, stato, q)
+    cliente_id, referente_val, stato_val, ricerca = _normalizza_filtri(db, cliente, referente, stato, q)
     righe = _righe_filtrate(db, cliente_id, referente_val, stato_val, ricerca)
 
     contesto = {
@@ -407,7 +412,8 @@ def lista_servizi(
             "q": ricerca,
         },
         "clienti": filtri.clienti_disponibili(db),
-        "referenti": filtri.referenti_disponibili(db),
+        # Only the chosen customer's people, once a customer is picked.
+        "referenti": filtri.referenti_disponibili(db, cliente_id),
         "stati": STATI_CONTRATTO,
         "etichette_stato": ETICHETTE_STATO_CONTRATTO,
     }
@@ -441,7 +447,7 @@ def export_pdf(
     app.js adds it to the link — without it the PDF would contain rows the
     user was not looking at.
     """
-    cliente_id, referente_val, stato_val, ricerca = _normalizza_filtri(cliente, referente, stato, q)
+    cliente_id, referente_val, stato_val, ricerca = _normalizza_filtri(db, cliente, referente, stato, q)
     righe = _righe_filtrate(db, cliente_id, referente_val, stato_val, ricerca)
     if nascondi == "1":
         righe = [r for r in righe if r[3] not in ("scaduto", "disdetto")]

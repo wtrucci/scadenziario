@@ -23,18 +23,6 @@ function initDatePickers(root) {
 document.addEventListener("DOMContentLoaded", function () { initDatePickers(document); });
 document.addEventListener("htmx:afterSwap", function (e) { initDatePickers(e.target); });
 
-// Filter dialogs (funnel icon next to the page title): picking a
-// filter already triggers the HTMX request via hx-trigger="change" on
-// the form: this just closes the dialog afterwards so the (already
-// updating) results are immediately visible.
-// Only for .filtri-dialog: a dialog with fields to fill in (.dialog-modulo)
-// would close the moment a field loses focus — which is exactly how the
-// "nuovo cliente" dialog once swallowed the click on its own save button.
-document.addEventListener("change", function (e) {
-    var dialog = e.target.closest("dialog.filtri-dialog");
-    if (dialog) dialog.close();
-});
-
 // Light/dark theme toggle. The initial data-theme attribute is set
 // synchronously in <head> (see above) to avoid a flash on load. The
 // sun/moon icon swap is pure CSS (see .icon-sun/.icon-moon); this only
@@ -447,19 +435,6 @@ function nascondiScadutiAttivo() {
     return localStorage.getItem(NASCONDI_SCADUTI_KEY) === "1";
 }
 
-// Shows a dot on the funnel icon while the preference is on: rows are
-// missing from the table and nothing else on the page would say why.
-function aggiornaIndicatorePreferenza() {
-    var badge = document.getElementById("pref-badge");
-    if (!badge) return;
-    var attivo = nascondiScadutiAttivo();
-    badge.innerHTML = attivo ? '<span class="icon-btn-badge-pref"></span>' : "";
-    var btn = badge.closest(".icon-btn");
-    if (btn) {
-        btn.title = attivo ? "Filtri — scaduti e disdetti nascosti" : "Filtri";
-    }
-}
-
 function applicaNascondiScaduti(tabella) {
     // Only the servizi table has a contract state per row.
     if (tabella.getAttribute("data-table-id") !== "servizi") return;
@@ -478,7 +453,6 @@ function applicaNascondiScaduti(tabella) {
 document.addEventListener("change", function (e) {
     if (e.target.id !== "nascondi-scaduti") return;
     localStorage.setItem(NASCONDI_SCADUTI_KEY, e.target.checked ? "1" : "0");
-    aggiornaIndicatorePreferenza();
     document.querySelectorAll('table[data-table-id="servizi"]').forEach(function (t) {
         applicaNascondiScaduti(t);
         // Row count changed, so page 1 is the only safe page to land on.
@@ -488,6 +462,11 @@ document.addEventListener("change", function (e) {
 });
 
 function initTabelleDati(root) {
+    // The checkbox sits in the filter bar, which HTMX redraws with the
+    // results: tick it again from the saved preference every time. Being
+    // always in view, a ticked box is itself the sign that rows are hidden.
+    var chk = root.querySelector("#nascondi-scaduti");
+    if (chk) chk.checked = nascondiScadutiAttivo();
     root.querySelectorAll("table[data-table-id]").forEach(function (tabella) {
         applicaColonne(tabella);
         applicaOrdinamento(tabella);
@@ -497,11 +476,6 @@ function initTabelleDati(root) {
     });
 }
 document.addEventListener("DOMContentLoaded", function () {
-    // The checkbox lives in the filter dialog, outside any HTMX target,
-    // so it only needs syncing on a full page load.
-    var chk = document.getElementById("nascondi-scaduti");
-    if (chk) chk.checked = nascondiScadutiAttivo();
-    aggiornaIndicatorePreferenza();
     initTabelleDati(document);
 });
 document.addEventListener("htmx:afterSwap", function (e) { initTabelleDati(e.target); });
@@ -530,8 +504,44 @@ function initSelectRicerca(root) {
         });
     });
 }
-document.addEventListener("DOMContentLoaded", function () { initSelectRicerca(document); });
-document.addEventListener("htmx:afterSwap", function (e) { initSelectRicerca(e.target); });
+// The dropdowns of a filter bar (<select data-filtro>): searchable too, but
+// unlike the form's customer picker they keep the server's order ("Tutti"
+// first, the states in their natural order rather than alphabetical) and
+// show "Tutti" as a real choice. Tom Select fires "change" on the original
+// <select>, so the bar's hx-trigger="change" works as before.
+// A dropdown with a filter set is tinted (.filtro-attivo): the bar tells at a
+// glance what is narrowing the table.
+function initSelectFiltro(root) {
+    if (typeof TomSelect === "undefined") return;
+    root.querySelectorAll("select[data-filtro]").forEach(function (el) {
+        if (el.tomselect) return;
+        var ts = new TomSelect(el, {
+            create: false,
+            maxOptions: null,
+            allowEmptyOption: true,     // "Tutti" has an empty value
+            diacritics: true,
+            placeholder: "Cerca…",
+        });
+        function segnaAttivo() {
+            ts.wrapper.classList.toggle("filtro-attivo", el.value !== "");
+        }
+        segnaAttivo();
+        el.addEventListener("change", segnaAttivo);
+    });
+}
+
+document.addEventListener("DOMContentLoaded", function () {
+    initSelectRicerca(document);
+    initSelectFiltro(document);
+});
+// After the SETTLE, not the swap: while settling, HTMX briefly gives each new
+// element the attributes of the old one with the same id. The old <select>
+// carried Tom Select's "hidden" classes; enhancing the new one at that moment
+// copied them onto its new control, which then stayed invisible.
+document.addEventListener("htmx:afterSettle", function (e) {
+    initSelectRicerca(e.target);
+    initSelectFiltro(e.target);
+});
 
 // "Nuovo cliente" dialog in the service form. POST /clienti/rapido answers a
 // successful save with an HX-Trigger header carrying the new customer's id

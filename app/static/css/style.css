@@ -118,6 +118,14 @@ h1, h2, h3 { letter-spacing: -0.015em; }
 a { color: var(--primary); text-decoration: none; }
 a:hover { color: var(--primary-hover); text-decoration: underline; }
 
+/* The open list of a native <select> is drawn by the operating system. With
+   the semi-transparent field fill, Windows painted it light grey under the
+   dark theme's light text — unreadable. Opaque theme colours fix both themes. */
+select option {
+    background-color: var(--surface);
+    color: var(--text);
+}
+
 /* Checkboxes and radios in the accent colour, everywhere. */
 input[type="checkbox"], input[type="radio"] { accent-color: var(--primary); }
 
@@ -302,7 +310,16 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--primary); }
         border-right: none;
         border-bottom: 1px solid var(--border);
     }
-    .sidebar-nav { flex-direction: row; overflow-x: auto; }
+    /* The menu gets a full row of its own under the brand and the footer,
+       scrolling sideways when the entries do not fit: squeezed between the
+       two, it shrank to nothing on a phone. */
+    .sidebar-nav {
+        order: 3;
+        flex: 1 1 100%;
+        flex-direction: row;
+        overflow-x: auto;
+    }
+    .sidebar-nav a { flex: none; }
     .sidebar-footer { margin-top: 0; border-top: none; padding-top: 0; }
 }
 
@@ -319,7 +336,14 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--primary); }
 }
 
 @media (max-width: 720px) {
-    .content { padding: 1.25rem 1.25rem 2.5rem; }
+    /* Stacked layout: the page is exactly as wide as the screen. Without the
+       stretch, .app-shell's align-items: flex-start let the content grow to
+       the width of its widest table, and the header and filter bar then
+       never wrapped. A table wider than the screen scrolls sideways inside
+       its own card instead of dragging the whole page along. */
+    .app-shell { align-items: stretch; }
+    .content { width: 100%; padding: 1.25rem 1.25rem 2.5rem; }
+    table { display: block; overflow-x: auto; }
 }
 
 /* Large title, as at the top of a settings or music app. */
@@ -378,40 +402,9 @@ h1 {
    dashboard): drop the underline links get by default. */
 a.icon-btn, a.icon-btn:hover { text-decoration: none; }
 
-.icon-btn-badge {
-    position: absolute;
-    top: 0;
-    right: 0;
-    width: 9px;
-    height: 9px;
-    border-radius: 50%;
-    background: var(--primary);
-    border: 2px solid var(--bg);
-}
-
-/* Second dot on the funnel icon: the "nascondi scaduti e disdetti" display
-   preference is on. Deliberately a different colour and corner from
-   .icon-btn-badge (active filters), because the two are not the same thing:
-   "Azzera filtri" clears the filters but NOT this preference. */
-.icon-btn-badge-pref {
-    position: absolute;
-    bottom: 0;
-    right: 0;
-    width: 9px;
-    height: 9px;
-    border-radius: 50%;
-    background: var(--text-3);
-    border: 2px solid var(--bg);
-}
-
 /* Dialogs: native <dialog>, styled as sheets. The browser handles the
-   backdrop, centering and Esc-to-close for free.
-   .filtri-dialog (funnel icon) and .dialog-modulo (small forms such as "nuovo
-   cliente") share the LOOK only. .filtri-dialog also carries a behaviour —
-   app.js closes it on the first change, because every control in it is a
-   filter that applies itself — so a dialog holding a form to fill in must
-   never use that class: it would close as soon as a field lost focus. */
-dialog.filtri-dialog,
+   backdrop, centering and Esc-to-close for free. .dialog-modulo holds a
+   small form (e.g. "nuovo cliente"), .colonne-dialog the column picker. */
 dialog.dialog-modulo,
 dialog.colonne-dialog {
     width: 100%;
@@ -433,7 +426,6 @@ dialog[open] { animation: comparsa 0.25s var(--ease); }
     to { opacity: 1; transform: none; }
 }
 
-dialog.filtri-dialog::backdrop,
 dialog.dialog-modulo::backdrop,
 dialog.colonne-dialog::backdrop {
     background: rgba(0, 0, 0, 0.35);
@@ -441,21 +433,9 @@ dialog.colonne-dialog::backdrop {
 }
 
 .dialog-modulo .field { width: 100%; }
-/* Buttons on the right, like "Chiudi" in the filter dialog: the two
-   dialogs sit side by side in daily use and should read the same. */
+/* Buttons on the right, as at the bottom of a sheet. */
 .dialog-modulo .form-actions { justify-content: flex-end; margin-top: 1.25rem; }
 .dialog-modulo h3 { margin-top: 0; font-size: 17px; font-weight: 600; }
-
-.filtri-dialog .filtri { flex-direction: column; align-items: stretch; gap: 1rem; }
-.filtri-dialog .field { width: 100%; }
-.filtri-dialog-actions { display: flex; justify-content: flex-end; margin-top: 1.25rem; }
-/* Separates the display preference from the filters above it in the dialog. */
-.dialog-sezione {
-    margin-top: 1.25rem;
-    padding-top: 1rem;
-    border-top: 1px solid var(--border);
-}
-.dialog-sezione .field { margin-bottom: 0; }
 
 .muted { color: var(--muted); }
 
@@ -806,7 +786,8 @@ tr.stato-nascosto { display: none; }
 .ts-wrapper.single.input-active .ts-control,
 .ts-wrapper .ts-control {
     min-height: 40px;
-    padding: 0.55rem 0.85rem;
+    /* Room on the right for the chevron (see below). */
+    padding: 0.55rem 2rem 0.55rem 0.85rem;
     border: none;
     border-radius: 10px;
     background: var(--fill);
@@ -860,6 +841,27 @@ tr.stato-nascosto { display: none; }
     color: inherit;
     font-weight: 700;
     text-decoration: underline;
+}
+
+/* The dropdown chevron. The library's base stylesheet draws none, so a
+   closed control did not read as a dropdown at all. Drawn with two borders
+   of a rotated square, in the theme's secondary text colour; it flips while
+   the list is open. */
+.ts-wrapper.single .ts-control { position: relative; }
+.ts-wrapper.single .ts-control::after {
+    content: "";
+    position: absolute;
+    right: 0.85rem;
+    top: 50%;
+    width: 7px;
+    height: 7px;
+    border-right: 1.75px solid var(--muted);
+    border-bottom: 1.75px solid var(--muted);
+    transform: translateY(-70%) rotate(45deg);
+    pointer-events: none;
+}
+.ts-wrapper.single.dropdown-active .ts-control::after {
+    transform: translateY(-30%) rotate(-135deg);
 }
 
 /* Beside the "+" button, the control takes the room like the <select> did. */
@@ -1234,11 +1236,63 @@ a.summary-card:focus-visible { outline: none; box-shadow: var(--focus-ring); }
 
 /* ------------------------------------------------------------------ Filters */
 
-/* The filter controls themselves — lives inside .filtri-dialog (see the
-   Layout section above), reached via the funnel icon next to the page
-   title instead of sitting in a permanent toolbar/card on the page. */
-.filtri { display: flex; flex-wrap: wrap; gap: 1rem; }
-.filtri .field { margin-bottom: 0; }
+/* Filter bar under the page title (dashboard, servizi): always in view, so
+   what narrows the table is never hidden behind an icon. One row of compact
+   dropdowns that wraps on a narrow window. */
+.barra-filtri {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    gap: 0.75rem 1.25rem;
+    margin: -0.5rem 0 1.5rem;
+}
+
+.filtri { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 0.75rem; }
+.barra-filtri .field { margin-bottom: 0; }
+.barra-filtri .field label { font-size: 12px; margin-bottom: 0.25rem; }
+
+/* The bar's dropdowns are Tom Select controls (searchable, see app.js):
+   compact, and wide enough for a customer name. */
+.barra-filtri .ts-wrapper { width: 13rem; }
+
+/* Same specificity as the general Tom Select rules (including the
+   .input-active one, which applies while typing), declared later: wins. */
+.barra-filtri .ts-wrapper.single .ts-control,
+.barra-filtri .ts-wrapper.single.input-active .ts-control {
+    min-height: 34px;
+    padding: 0.4rem 2rem 0.4rem 0.8rem;
+    font-size: 14px;
+    cursor: pointer;
+}
+
+/* One line, always: while you type, the current choice steps aside for the
+   search text instead of pushing it onto a second line (which made the whole
+   bar jump). */
+.barra-filtri .ts-wrapper .ts-control { flex-wrap: nowrap; overflow: hidden; }
+.barra-filtri .ts-wrapper.dropdown-active .ts-control .item { display: none; }
+
+/* A dropdown with a filter set turns accent-tinted: the bar then tells at a
+   glance what is narrowing the table. The class is set by app.js. */
+.barra-filtri .ts-wrapper.filtro-attivo .ts-control {
+    background-color: color-mix(in srgb, var(--primary) 14%, transparent);
+    color: var(--primary);
+    font-weight: 500;
+}
+
+/* Without the library (CDN unreachable) the plain <select> still works. */
+.barra-filtri select {
+    width: 13rem;
+    min-height: 34px;
+    padding: 0.35rem 0.75rem;
+    font-size: 14px;
+}
+
+/* The display preference sits on the same line as the dropdowns, aligned
+   with their boxes rather than with their labels. */
+.barra-filtri .field-inline { min-height: 34px; }
+.barra-filtri .field-inline label { font-size: 14px; }
+#filtri-reset:empty { display: none; }
+#filtri-reset { display: flex; align-items: center; min-height: 34px; }
 
 /* ------------------------------------------------------------------ Motion */
 

@@ -215,6 +215,15 @@ le scelte tecniche quando non sono banali.
   (es. fatturato / da fatturare). I filtri sono combinabili. Vivono nella query
   string, quindi sono condivisibili con un link ma NON sopravvivono alla
   navigazione: sono una domanda del momento, non una preferenza.
+  - Stanno in una **barra sempre visibile** (mai dietro un'icona), dentro la
+    regione che HTMX aggiorna: il server la ridisegna ad ogni cambio con i
+    valori in vigore. In dashboard sta sotto le card di riepilogo.
+  - Le tendine sono **con ricerca** (Tom Select, `select[data-filtro]`),
+    mantengono l'ordine del server ("Tutti" in cima) e si colorano quando
+    il filtro è attivo.
+  - Scelto un cliente, la tendina Referente elenca **solo i suoi referenti**;
+    un referente rimasto da un altro cliente viene scartato, non applicato
+    (`filtri.referente_coerente`).
 - **Preferenze di visualizzazione delle tabelle** (colonne visibili, righe per
   pagina, ordinamento, "nascondi contratti scaduti e disdetti"): al contrario
   dei filtri sono scelte durature, quindi si salvano in `localStorage` e si

@@ -2,15 +2,56 @@
    page. Context: righe (list of (Servizio, cadenza label, next due date,
    computed contract state)), filtri, etichette_stato (state -> label). #}
 {% set filtri_attivi = filtri.cliente or filtri.referente or filtri.stato or filtri.q %}
-{# Out-of-band swaps only make sense in an HTMX response: on a full page load
-   this partial is included INSIDE the page, which already renders these
-   elements in the header — rendering them here too would show them twice
-   (two "Azzera filtri" buttons). `request` is available in every template
-   context, so the partial can tell the two cases apart on its own. #}
-{% if request.headers.get('HX-Request') %}
-<span id="filtri-badge" hx-swap-oob="true">{% if filtri_attivi %}<span class="icon-btn-badge"></span>{% endif %}</span>
-<span id="filtri-reset" hx-swap-oob="true">{% if filtri_attivi %}<a class="btn btn-secondary" href="/servizi">Azzera filtri</a>{% endif %}</span>
-{% endif %}
+
+{# Filter bar, always in view: a filter behind an icon was a gesture people
+   stopped making. Changing any control issues an HTMX GET that swaps this
+   whole region — the bar included, so the server redraws it with the values
+   in force: the referente list narrows to the chosen customer's people and
+   "Azzera filtri" needs no out-of-band update. The URL is pushed, so it stays
+   bookmarkable. On servizi the state filter uses the service's own status
+   (attivo/scaduto/...). #}
+<div class="barra-filtri">
+    <form id="form-filtri" class="filtri" hx-get="/servizi" hx-target="#risultati" hx-push-url="true" hx-trigger="change" hx-include="#q">
+        <div class="field">
+            <label for="f-cliente">Cliente</label>
+            <select id="f-cliente" data-filtro name="cliente">
+                <option value="">Tutti</option>
+                {% for c in clienti %}
+                <option value="{{ c.id }}" {% if filtri.cliente == c.id %}selected{% endif %}>{{ c.nome }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="field">
+            <label for="f-referente">Referente</label>
+            <select id="f-referente" data-filtro name="referente">
+                <option value="">Tutti</option>
+                {% for r in referenti %}
+                <option value="{{ r }}" {% if filtri.referente == r %}selected{% endif %}>{{ r }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="field">
+            <label for="f-stato">Stato servizio</label>
+            <select id="f-stato" data-filtro name="stato">
+                <option value="">Tutti</option>
+                {% for st in stati %}
+                <option value="{{ st }}" {% if filtri.stato == st %}selected{% endif %}>{{ etichette_stato[st] }}</option>
+                {% endfor %}
+            </select>
+        </div>
+    </form>
+    {# Display preference, NOT a filter: it lives outside the form on purpose,
+       so changing it doesn't fire the form's HTMX request. It hides rows
+       client-side and is remembered in localStorage (see app.js), unlike the
+       filters beside it which live in the URL and reset when you navigate
+       away. "Azzera filtri" does not touch it. app.js re-ticks it after each
+       swap. #}
+    <div class="field field-inline">
+        <input type="checkbox" id="nascondi-scaduti">
+        <label for="nascondi-scaduti">Nascondi scaduti e disdetti</label>
+    </div>
+    <span id="filtri-reset">{% if filtri_attivi %}<a class="btn btn-secondary btn-small" href="/servizi">Azzera filtri</a>{% endif %}</span>
+</div>
 
 {% if righe %}
 <table class="table-servizi" data-table-id="servizi">

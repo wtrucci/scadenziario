@@ -241,16 +241,25 @@ class TestFiltriRotteDashboard(unittest.TestCase):
         self.assertIn(f'value="{self.acme_id}" selected', r.text)
 
     def test_richiesta_htmx_serve_solo_il_partial(self):
-        """With HX-Request only the results partial is returned (no page chrome,
-        no filter form)."""
-        r = self.client.get("/?mese=2020-06", headers={"HX-Request": "true"})
+        """With HX-Request only the results partial is returned, without the
+        page chrome. The filter bar IS in it: on the dashboard it sits under
+        the summary cards, inside the swapped region, so the server redraws it
+        with the values in force."""
+        r = self.client.get(f"/?mese=2020-06&cliente={self.acme_id}", headers={"HX-Request": "true"})
         self.assertEqual(r.status_code, 200)
         # Results are present...
         self.assertIn("PassatoAcme", r.text)
         self.assertIn("Giugno 2020", r.text)
-        # ...but the full-page chrome and filter form are not.
+        # ...the page chrome is not...
         self.assertNotIn("Scadenze del mese", r.text)
-        self.assertNotIn('class="filtri"', r.text)
+        # ...and the filter bar comes back with the chosen customer selected.
+        self.assertIn('class="barra-filtri"', r.text)
+        self.assertIn(f'value="{self.acme_id}" selected', r.text)
+
+    def test_barra_filtri_sotto_le_card(self):
+        h = self.client.get("/?mese=2020-06").text
+        self.assertLess(h.index('class="summary-cards"'), h.index('class="barra-filtri"'))
+        self.assertEqual(h.count('class="barra-filtri"'), 1)
 
 
 class TestFiltriRotteServizi(unittest.TestCase):
@@ -278,8 +287,10 @@ class TestFiltriRotteServizi(unittest.TestCase):
         _add_servizio(db, acme, "AcmeAttivo", futuro, "10", cadenza_mesi=12, referente="Mario")
         _add_servizio(db, acme, "AcmeDisdetto", futuro, "10", cadenza_mesi=12, disdetto=True)
         _add_servizio(db, beta, "BetaAttivo", futuro, "10", cadenza_mesi=12)
+        _add_servizio(db, beta, "BetaLuigi", futuro, "10", cadenza_mesi=12, referente="Luigi")
         db.commit()
         self.acme_id = acme.id
+        self.beta_id = beta.id
         db.close()
 
         def override_get_db():
@@ -322,9 +333,35 @@ class TestFiltriRotteServizi(unittest.TestCase):
         r = self.client.get("/servizi", headers={"HX-Request": "true"})
         self.assertEqual(r.status_code, 200)
         self.assertIn("AcmeAttivo", r.text)
-        # No full-page chrome / filter form in the partial.
-        self.assertNotIn('class="filtri"', r.text)
+        # No full-page chrome in the partial...
         self.assertNotIn("+ Nuovo servizio", r.text)
+        # ...but the filter bar travels with the results, so the server can
+        # redraw the referente list for the chosen customer.
+        self.assertIn('class="barra-filtri"', r.text)
+
+    def _referenti_offerti(self, html: str) -> list[str]:
+        blocco = html[html.index('id="f-referente"'):]
+        blocco = blocco[:blocco.index("</select>")]
+        return re.findall(r'<option value="([^"]+)"', blocco)
+
+    def test_referenti_solo_del_cliente_scelto(self):
+        tutti = self._referenti_offerti(self.client.get("/servizi").text)
+        self.assertEqual(tutti, ["Luigi", "Mario"])
+        acme = self._referenti_offerti(self.client.get(f"/servizi?cliente={self.acme_id}").text)
+        self.assertEqual(acme, ["Mario"])
+
+    def test_referente_di_un_altro_cliente_viene_scartato(self):
+        # Luigi was chosen, then the customer changed to Acme (who has no
+        # Luigi): the referente filter is dropped, not applied to an empty set.
+        r = self.client.get(f"/servizi?cliente={self.acme_id}&referente=Luigi")
+        self.assertIn("AcmeAttivo", r.text)
+        self.assertNotIn('value="Luigi"', r.text)
+
+    def test_referente_del_cliente_resta(self):
+        r = self.client.get(f"/servizi?cliente={self.beta_id}&referente=Luigi")
+        self.assertIn("BetaLuigi", r.text)
+        self.assertNotIn("BetaAttivo", r.text)
+        self.assertIn('value="Luigi" selected', r.text)
 
     def test_righe_espongono_lo_stato_calcolato(self):
         """Every row must carry its computed contract state in data-stato: the
@@ -333,8 +370,8 @@ class TestFiltriRotteServizi(unittest.TestCase):
         silently break the preference."""
         r = self.client.get("/servizi")
         stati = re.findall(r'<tr id="servizio-\d+" data-stato="([^"]+)"', r.text)
-        self.assertEqual(len(stati), 3)
-        self.assertEqual(sorted(stati), ["attivo", "attivo", "disdetto"])
+        self.assertEqual(len(stati), 4)
+        self.assertEqual(sorted(stati), ["attivo", "attivo", "attivo", "disdetto"])
 
 
 if __name__ == "__main__":

@@ -14,9 +14,9 @@
             document.documentElement.setAttribute("data-theme", theme);
         })();
     </script>
-    {# Page-specific libraries (e.g. Tom Select on the service form) go in
-       this block, BEFORE our stylesheet: loaded after it, their own colours
-       would override the theme variables and break the dark mode. #}
+    {# Page-specific libraries (e.g. Tom Select, see partials/_tom_select.html)
+       go in this block, BEFORE our stylesheet: loaded after it, their own
+       colours would override the theme variables and break the dark mode. #}
     {% block head_extra %}{% endblock %}
     {# Versioned like app.js below: without ?v= a browser keeps the previous
        release's stylesheet after an update, and new markup renders with old

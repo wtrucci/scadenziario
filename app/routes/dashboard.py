@@ -87,8 +87,8 @@ def _contesto_risultati(
     referente: str | None,
     stato: str | None,
 ) -> dict:
-    """Build everything ``dashboard/_risultati.html`` needs: month nav, table
-    rows, summary cards and the active-filter values.
+    """Build everything ``dashboard/_risultati.html`` needs: month nav, summary
+    cards, filter bar, table rows and the active-filter values.
 
     Shared by the dashboard route and the "fatturato" toggle endpoint (see
     app/routes/servizi.py) — toggling an occurrence can change which rows
@@ -101,6 +101,10 @@ def _contesto_risultati(
     cliente_id = int(cliente) if (cliente and cliente.isdigit()) else None
     referente_val = referente.strip() if referente and referente.strip() else None
     stato_val = stato if stato in STATI_OCCORRENZA_FILTRABILI else None
+    # The referente dropdown lists only the chosen customer's people; a
+    # referente left over from another customer is dropped, not applied.
+    referenti = filtri.referenti_disponibili(db, cliente_id)
+    referente_val = filtri.referente_coerente(referente_val, referenti)
 
     # cliente/referente are SQL filters (service columns); the visual state is
     # filtered in Python because it is computed by the engine, not a column.
@@ -170,6 +174,12 @@ def _contesto_risultati(
             "referente": referente_val or "",
             "stato": stato_val or "",
         },
+        # The filter bar's choices. The bar sits inside this region (under the
+        # summary cards), so every re-render — filter change or "fatturato"
+        # toggle — needs them, not just the full page.
+        "clienti": filtri.clienti_disponibili(db),
+        "referenti": referenti,
+        "stati_occorrenza": STATI_OCCORRENZA_FILTRABILI,
     }
 
 
@@ -185,9 +195,6 @@ def dashboard(
 ):
     contesto = _contesto_risultati(db, mese, cliente, referente, stato)
     contesto["user"] = user
-    contesto["clienti"] = filtri.clienti_disponibili(db)
-    contesto["referenti"] = filtri.referenti_disponibili(db)
-    contesto["stati_occorrenza"] = STATI_OCCORRENZA_FILTRABILI
 
     # HTMX request (filter change): swap only the results region. A normal page
     # load or a bookmarked URL gets the whole page, with filters already applied

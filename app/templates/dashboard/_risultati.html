@@ -1,23 +1,15 @@
 {# Results region swapped by HTMX on filter changes; also included by the full
    page. Contains the month navigation (so its links pick up the active filters
-   after a swap), the summary cards, the heading and the occurrences table.
+   after a swap), the summary cards, the filter bar, the heading and the
+   occurrences table.
    Context: nav, filtri_qs, righe (list of RigaOccorrenza), conteggi (state ->
    count, whole month regardless of the stato filter), totale_da_fatturare,
    stati_servizi (servizio.id -> computed contract state), etichette_stato
-   (state -> label). #}
+   (state -> label), clienti/referenti/stati_occorrenza (filter choices). #}
 {% set filtri_attivi = filtri.cliente or filtri.referente or filtri.stato %}
 {# The dashboard exactly as it is being shown, handed to the edit form so it
    can bring the user back to this month with these filters. #}
 {% set ritorno_dashboard = "/?mese=" ~ nav.chiave ~ filtri_qs %}
-{# Out-of-band swaps only make sense in an HTMX response: on a full page load
-   this partial is included INSIDE the page, which already renders these
-   elements in the header — rendering them here too would show them twice
-   (two "Azzera filtri" buttons). `request` is available in every template
-   context, so the partial can tell the two cases apart on its own. #}
-{% if request.headers.get('HX-Request') %}
-<span id="filtri-badge" hx-swap-oob="true">{% if filtri_attivi %}<span class="icon-btn-badge"></span>{% endif %}</span>
-<span id="filtri-reset" hx-swap-oob="true">{% if filtri_attivi %}<a class="btn btn-secondary" href="/?mese={{ nav.chiave }}">Azzera filtri</a>{% endif %}</span>
-{% endif %}
 
 {% with base_url = "/" %}
 {% include "partials/_navigazione_mese.html" %}
@@ -53,6 +45,48 @@
         <span class="summary-value">{{ "%.2f"|format(totale_da_fatturare) }}</span>
         <span class="summary-label">Totale da fatturare</span>
     </div>
+</div>
+
+{# Filter bar, always in view and right under the cards it narrows: a filter
+   behind an icon was a gesture people stopped making. Changing any control
+   issues an HTMX GET that swaps this whole region — the bar included, so the
+   server always redraws it with the values in force and "Azzera filtri" needs
+   no out-of-band update. The URL is pushed, so it stays bookmarkable. The
+   hidden "mese" keeps the selected month when filtering. #}
+<div class="barra-filtri">
+    <form id="form-filtri" class="filtri" hx-get="/" hx-target="#risultati" hx-push-url="true" hx-trigger="change">
+        <input type="hidden" name="mese" value="{{ nav.chiave }}">
+        <div class="field">
+            <label for="f-cliente">Cliente</label>
+            <select id="f-cliente" data-filtro name="cliente">
+                <option value="">Tutti</option>
+                {% for c in clienti %}
+                <option value="{{ c.id }}" {% if filtri.cliente == c.id %}selected{% endif %}>{{ c.nome }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="field">
+            <label for="f-referente">Referente</label>
+            <select id="f-referente" data-filtro name="referente">
+                <option value="">Tutti</option>
+                {% for r in referenti %}
+                <option value="{{ r }}" {% if filtri.referente == r %}selected{% endif %}>{{ r }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="field">
+            <label for="f-stato">Stato occorrenza</label>
+            <select id="f-stato" data-filtro name="stato">
+                <option value="">Tutti</option>
+                {% for st in stati_occorrenza %}
+                <option value="{{ st }}" {% if filtri.stato == st %}selected{% endif %}>
+                    {{ {"da_fatturare": "Da fatturare", "in_scadenza": "In scadenza", "fatturato": "Fatturato"}[st] }}
+                </option>
+                {% endfor %}
+            </select>
+        </div>
+    </form>
+    <span id="filtri-reset">{% if filtri_attivi %}<a class="btn btn-secondary btn-small" href="/?mese={{ nav.chiave }}">Azzera filtri</a>{% endif %}</span>
 </div>
 
 <h2 class="month-heading">{{ nav.etichetta }}</h2>
