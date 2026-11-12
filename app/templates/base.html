@@ -22,6 +22,11 @@
        release's stylesheet after an update, and new markup renders with old
        rules — 0.9.0 showed the "nuovo cliente" button dropped under its
        dropdown and an unstyled dialog until a hard refresh. #}
+    {# Inter stands in for the system font of Apple devices on Windows and
+       Linux; on a Mac the font stack in style.css picks the native one first. #}
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
     <link rel="stylesheet" href="{{ url_for('static', path='css/style.css') }}?v={{ app_version }}">
     <!-- HTMX: loaded from CDN. No build step, no npm. -->
     <script src="https://unpkg.com/htmx.org@2.0.3"></script>

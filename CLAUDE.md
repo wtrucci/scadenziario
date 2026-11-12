@@ -39,6 +39,13 @@ le scelte tecniche quando non sono banali.
   nativo `<input type="date">`, che segue la lingua del browser/OS e può
   mostrare mm/dd/yyyy. Mostra sempre dd/mm/yyyy; il valore inviato al server
   resta ISO yyyy-mm-dd.
+- **Stile grafico ispirato ad Apple** (skill `apple-style-webapp`): sfondo
+  grigio chiaro, superfici bianche (nere nel tema scuro), UN solo colore
+  d'accento blu, verde/arancio/rosso solo per gli stati, angoli arrotondati,
+  pulsanti a pillola, campi con riempimento grigio senza bordo, separatori
+  sottili invece di bordi, ombre quasi assenti, font di sistema con Inter
+  (Google Fonts) come ripiego. Niente loghi, icone o font proprietari Apple.
+  Le pagine nuove riusano le classi esistenti di `style.css`, non stili nuovi.
 - **Tema chiaro/scuro:** icona toggle in alto a destra su ogni pagina. Scelta
   salvata in `localStorage`, applicata prima del render per evitare flash; al
   primo accesso segue la preferenza del sistema operativo. Tutti i colori sono
